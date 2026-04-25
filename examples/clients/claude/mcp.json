@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "super-productivity": {
+      "command": "bash",
+      "args": ["/absolute/path/to/super-productivity-mcp/scripts/run-mcp.sh"],
+      "env": {
+        "SP_MCP_DATA_DIR": "/home/you/.local/share/super-productivity-mcp",
+        "SP_MCP_TIMEOUT": "30s",
+        "SP_MCP_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "tool_names": [
+    "create_task",
+    "get_tasks",
+    "get_task",
+    "update_task",
+    "complete_task",
+    "uncomplete_task",
+    "archive_task",
+    "add_time_to_task",
+    "reorder_task",
+    "get_projects",
+    "create_project",
+    "update_project",
+    "get_tags",
+    "create_tag",
+    "update_tag",
+    "show_notification",
+    "bridge_health",
+    "bridge_capabilities"
+  ],
+  "notes": {
+    "canonical_source": "internal/mcpadapter/tools_*.go",
+    "purpose": "Quick surface check against tools/list output"
+  }
+}

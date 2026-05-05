@@ -1,3 +1,5 @@
+const catalog = require("../tool-catalog.json");
+
 module.exports = {
   "notification.show": async (payload) => {
     const message = payload?.message || "";
@@ -18,26 +20,8 @@ module.exports = {
   },
   "bridge.health": async () => ({ ok: true, message: "bridge alive" }),
   "bridge.capabilities": async () => ({
-    supportedActions: [
-      "task.create",
-      "task.list",
-      "task.get",
-      "task.update",
-      "task.complete",
-      "task.uncomplete",
-      "task.archive",
-      "task.addTime",
-      "task.reorder",
-      "project.list",
-      "project.create",
-      "project.update",
-      "tag.list",
-      "tag.create",
-      "tag.update",
-      "notification.show",
-      "bridge.health",
-      "bridge.capabilities",
-    ],
+    supportedActions: catalog.tools.map((t) => t.action),
     pluginVersion: "0.1.0",
+    protocolVersion: catalog.protocolVersion,
   }),
 };

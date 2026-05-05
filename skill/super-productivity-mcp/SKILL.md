@@ -53,11 +53,22 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 **Symptoms:** Server connects but tools are absent/misaligned; client calls unknown tool names.
 **Key Questions:**
 - Does `tools/list` include expected names?
-- Do adapter tool names match service method mapping?
+- Do `mcpName` and `action` in `internal/catalog/tools.json` match the JS handler keys in `plugin/bridge/actions/`?
 - Are schemas valid JSON Schema objects?
 **Interventions:**
-- Compare reported tool names against canonical map (`data/tool-catalog.json`).
-- Patch adapter registration only; keep service/bridge contracts stable.
+- Compare reported tool names against the canonical catalog (`internal/catalog/tools.json`, mirrored at `plugin/bridge/tool-catalog.json` and `skill/super-productivity-mcp/data/tool-catalog.json`).
+- Edit the Go-side catalog only; run `make sync-catalogs` to propagate.
+
+### SPM6: Catalog Drift
+**Symptoms:** `make check-catalogs` fails in CI, plugin throws "Tool catalog declares actions without handlers" or "Handlers not declared in tool catalog" at load time, or schema validation rejects arguments the JS handler actually accepts.
+**Key Questions:**
+- Was `internal/catalog/tools.json` edited without running `make sync-catalogs`?
+- Was a JS handler added/removed without updating the catalog?
+- Does the schema's `required` list match what the JS handler reads from `payload`?
+**Interventions:**
+- Run `make sync-catalogs` and commit the resulting copies.
+- Add or remove the handler in `plugin/bridge/actions/` to match the catalog.
+- Update the schema (Go-side SSOT) to use the JS-canonical field names.
 
 ### SPM4: Bridge Round-Trip Timeout
 **Symptoms:** `tools/call` executes but returns timeout/internal errors; requests accumulate in `inbox/`.
@@ -128,9 +139,9 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 **Detection:** Same action behaves differently across clients.
 
 ### The Tool Alias Drift
-**Pattern:** Renaming adapter tool keys without catalog/schemas alignment.
-**Problem:** Unknown tool errors or tool invisibility.
-**Fix:** Keep canonical names and validate against shared catalog.
+**Pattern:** Editing the catalog or JS handlers in only one place.
+**Problem:** Plugin throws on load (drift check), or schema validates arguments the handler doesn't accept.
+**Fix:** Edit `internal/catalog/tools.json` (SSOT), run `make sync-catalogs`, ensure JS handler keys match `action` names.
 
 ## Available Tools
 

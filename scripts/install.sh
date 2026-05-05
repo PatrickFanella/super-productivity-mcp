@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install super-productivity-mcp: build the Go binary, set up the IPC data
-# directory, install the skill, and print MCP client + SP plugin instructions.
+# directory, install the skill, package the SP plugin zip, and print MCP
+# client + plugin instructions.
 #
 # Usage:
 #   scripts/install.sh                # default: ~/.local install
@@ -15,7 +16,7 @@
 #                    $HOME/.local/share/super-productivity-mcp)
 #   SKILLS_DIR      (default: first existing of ~/.agents/skills,
 #                    ~/.claude/skills, then ~/.agents/skills as fallback)
-#   SKIP_BUILD, SKIP_SKILL, SKIP_DATA_DIR
+#   SKIP_BUILD, SKIP_SKILL, SKIP_DATA_DIR, SKIP_PLUGIN_ZIP
 
 set -euo pipefail
 
@@ -89,7 +90,15 @@ if [[ -z "${SKIP_SKILL:-}" ]]; then
   fi
 fi
 
-# 5. Print client config + plugin instructions.
+# 5. Package the Super Productivity plugin zip.
+if [[ -z "${SKIP_PLUGIN_ZIP:-}" ]]; then
+  log "Packaging Super Productivity plugin zip"
+  PLUGIN_ZIP="$(bash "$ROOT_DIR/scripts/package-plugin.sh")"
+else
+  PLUGIN_ZIP="<skipped>"
+fi
+
+# 6. Print client config + plugin instructions.
 GREEN=$'\033[1;32m'; BOLD=$'\033[1m'; RESET=$'\033[0m'
 cat <<EOF
 
@@ -98,6 +107,7 @@ ${GREEN}Install complete.${RESET}
   binary:   $BIN_DIR/sp-mcp
   data dir: $DATA_DIR
   skill:    ${SKILL_DEST:-<skipped>}
+  plugin:   $PLUGIN_ZIP
 
 ${BOLD}PATH check${RESET}
   Ensure $BIN_DIR is on your PATH. If not, add to your shell rc:
@@ -117,10 +127,10 @@ ${BOLD}MCP client config${RESET} (drop into your client's mcp.json)
 }
 
 ${BOLD}Super Productivity plugin${RESET}
-  The JS bridge in plugin/bridge/ runs inside Super Productivity.
-  Load it via Super Productivity's plugin loader, pointing at:
-    $ROOT_DIR/plugin/bridge/plugin.js
-  (The plugin reads $ROOT_DIR/plugin/bridge/tool-catalog.json automatically.)
+  Upload the packaged plugin zip via Settings -> Plugins -> Upload Plugin:
+    $PLUGIN_ZIP
+  For development/debugging, the packaged folder is also available under:
+    $ROOT_DIR/dist/plugin/super-productivity-mcp
 
 ${BOLD}Verify${RESET}
   $BIN_DIR/sp-mcp --version 2>/dev/null || echo "(no --version flag yet; smoke-test via your MCP client)"

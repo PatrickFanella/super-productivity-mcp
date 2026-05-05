@@ -1,0 +1,11 @@
+{
+  "id": "super-productivity-mcp",
+  "name": "Super Productivity MCP",
+  "version": "0.1.0",
+  "description": "Bridge Super Productivity's desktop plugin API to the sp-mcp file IPC runtime.",
+  "manifestVersion": 1,
+  "minSupVersion": "14.0.0",
+  "author": "Patrick Fanella",
+  "homepage": "https://github.com/PatrickFanella/super-productivity-mcp",
+  "permissions": ["nodeExecution"]
+}

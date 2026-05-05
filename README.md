@@ -31,7 +31,21 @@ The Go binary speaks the MCP wire protocol to AI clients and bridges requests to
 
 ## Installation
 
-### 1. Build the binary
+### Quick install (recommended)
+
+One-shot installer — builds the binary, sets up the IPC data directory, installs the skill, packages the plugin zip, and prints the MCP client config:
+
+```bash
+git clone https://github.com/PatrickFanella/super-productivity-mcp.git
+cd super-productivity-mcp
+make install
+```
+
+Honored env vars: `PREFIX`, `BIN_DIR`, `DATA_DIR`, `SKILLS_DIR`, `SKIP_BUILD`, `SKIP_SKILL`, `SKIP_DATA_DIR`, `SKIP_PLUGIN_ZIP`. Defaults install to `~/.local/bin` and `~/.local/share/super-productivity-mcp`.
+
+### Manual install
+
+#### 1. Build the binary
 
 ```bash
 git clone https://github.com/PatrickFanella/super-productivity-mcp.git
@@ -39,13 +53,14 @@ cd super-productivity-mcp
 go build -o sp-mcp ./cmd/sp-mcp
 ```
 
-### 2. Install the plugin in Super Productivity
+#### 2. Install the plugin in Super Productivity
 
-1. Open Super Productivity → **Settings → Plugins**.
-2. Click **Add plugin from file** and select `plugin.js` from this repository.
-3. Enable the plugin. It will start watching the IPC directory automatically.
+1. Run `make package-plugin` to produce the plugin zip (see [Package the plugin](#package-the-super-productivity-plugin) below).
+2. Open Super Productivity → **Settings → Plugins**.
+3. Click **Upload Plugin** and select the generated zip file.
+4. Enable the plugin. It will start watching the IPC directory automatically.
 
-### 3. Configure your AI client
+#### 3. Configure your AI client
 
 Copy the example config for your client and adjust the path:
 
@@ -111,6 +126,27 @@ The plugin inside Super Productivity must be configured to use the **same** `SP_
 
 The full schema for each tool lives in [`internal/catalog/tools.json`](internal/catalog/tools.json).
 
+## Package the Super Productivity plugin
+
+Super Productivity production installs expect a plugin `.zip` that contains at least `manifest.json` and `plugin.js`. This repo can package that for you:
+
+```bash
+make package-plugin
+# or directly:
+bash scripts/package-plugin.sh
+```
+
+This writes:
+
+- `dist/plugin/super-productivity-mcp/` — unpacked plugin folder for dev/debugging
+- `./super-productivity-mcp-plugin-v<version>.zip` — uploadable plugin archive in the project root
+
+To install in Super Productivity:
+
+1. Open **Settings → Plugins**
+2. Click **Upload Plugin**
+3. Select the generated zip file from the project root
+
 ## Development
 
 ### Run tests
@@ -127,6 +163,9 @@ node --test plugin/bridge/**/*.test.js
 
 # E2E tests only
 go test ./test/e2e -v
+
+# Plugin packaging smoke test
+make package-plugin
 ```
 
 ### Sync the tool catalog

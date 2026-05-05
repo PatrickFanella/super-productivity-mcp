@@ -1,6 +1,12 @@
-.PHONY: test test-go test-js test-e2e sync-catalogs check-catalogs
+.PHONY: test test-go test-js test-e2e sync-catalogs check-catalogs install package-plugin
 
 test: check-catalogs test-go test-js test-e2e
+
+install:
+	bash scripts/install.sh
+
+package-plugin:
+	bash scripts/package-plugin.sh
 
 test-go:
 	go test ./...

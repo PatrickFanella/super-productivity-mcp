@@ -34,3 +34,7 @@ go.work.sum
 # .idea/
 # .vscode/
 .agents/
+
+# Local packaging output
+dist/
+super-productivity-mcp-plugin-v*.zip

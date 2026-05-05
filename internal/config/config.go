@@ -9,15 +9,16 @@ import (
 )
 
 type Config struct {
-	DataDir   string
-	InboxDir  string
-	ProcDir   string
-	OutboxDir string
-	EventsDir string
-	DeadDir   string
-	Timeout   time.Duration
-	Retries   int
-	LogLevel  string
+	DataDir      string
+	InboxDir     string
+	ProcDir      string
+	OutboxDir    string
+	EventsDir    string
+	DeadDir      string
+	Timeout      time.Duration
+	PollInterval time.Duration
+	Retries      int
+	LogLevel     string
 }
 
 func Load() Config {
@@ -29,6 +30,12 @@ func Load() Config {
 	if raw := os.Getenv("SP_MCP_TIMEOUT"); raw != "" {
 		if d, err := time.ParseDuration(raw); err == nil {
 			timeout = d
+		}
+	}
+	pollInterval := 200 * time.Millisecond
+	if raw := os.Getenv("SP_MCP_POLL_INTERVAL"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			pollInterval = d
 		}
 	}
 	retries := 0
@@ -43,15 +50,16 @@ func Load() Config {
 	}
 
 	return Config{
-		DataDir:   base,
-		InboxDir:  filepath.Join(base, "inbox"),
-		ProcDir:   filepath.Join(base, "processing"),
-		OutboxDir: filepath.Join(base, "outbox"),
-		EventsDir: filepath.Join(base, "events"),
-		DeadDir:   filepath.Join(base, "deadletter"),
-		Timeout:   timeout,
-		Retries:   retries,
-		LogLevel:  level,
+		DataDir:      base,
+		InboxDir:     filepath.Join(base, "inbox"),
+		ProcDir:      filepath.Join(base, "processing"),
+		OutboxDir:    filepath.Join(base, "outbox"),
+		EventsDir:    filepath.Join(base, "events"),
+		DeadDir:      filepath.Join(base, "deadletter"),
+		Timeout:      timeout,
+		PollInterval: pollInterval,
+		Retries:      retries,
+		LogLevel:     level,
 	}
 }
 

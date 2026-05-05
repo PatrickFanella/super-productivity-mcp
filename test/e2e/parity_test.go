@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,9 +31,16 @@ func TestBridgeRoundTripWithFixtureResponse(t *testing.T) {
 	go func() {
 		for i := 0; i < 20; i++ {
 			entries, _ := os.ReadDir(cfg.InboxDir)
-			if len(entries) > 0 {
-				id := entries[0].Name()
-				id = id[:len(id)-len(filepath.Ext(id))]
+			var name string
+			for _, e := range entries {
+				n := e.Name()
+				if filepath.Ext(n) == ".json" && !strings.Contains(n, ".tmp.") {
+					name = n
+					break
+				}
+			}
+			if name != "" {
+				id := name[:len(name)-len(filepath.Ext(name))]
 				resp := pluginipc.Envelope{
 					ProtocolVersion: domain.ProtocolVersion,
 					ID:              id,
@@ -40,9 +48,9 @@ func TestBridgeRoundTripWithFixtureResponse(t *testing.T) {
 					Status:          "ok",
 					Result:          map[string]any{"ok": true},
 				}
-				_ = os.Rename(filepath.Join(cfg.InboxDir, entries[0].Name()), filepath.Join(cfg.ProcDir, entries[0].Name()))
+				_ = os.Rename(filepath.Join(cfg.InboxDir, name), filepath.Join(cfg.ProcDir, name))
 				_ = pluginipc.FS{}.WriteJSONAtomic(filepath.Join(cfg.OutboxDir, id+".json"), resp)
-				_ = os.Remove(filepath.Join(cfg.ProcDir, entries[0].Name()))
+				_ = os.Remove(filepath.Join(cfg.ProcDir, name))
 				return
 			}
 			time.Sleep(50 * time.Millisecond)

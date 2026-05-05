@@ -1,29 +1,32 @@
+// Package mcpadapter speaks the MCP JSON-RPC 2.0 wire protocol over stdio
+// and dispatches tools/call requests through the catalog into the bridge.
 package mcpadapter
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 
-	"github.com/PatrickFanella/super-productivity-mcp/internal/service"
+	"github.com/PatrickFanella/super-productivity-mcp/internal/catalog"
+	"github.com/PatrickFanella/super-productivity-mcp/internal/domain"
+	"github.com/PatrickFanella/super-productivity-mcp/internal/version"
 )
 
+// Server is the MCP JSON-RPC server. It holds no per-request state and is
+// safe to share for the lifetime of the process.
 type Server struct {
-	logger *slog.Logger
-	svc    *service.Services
-	tools  map[string]func(context.Context, map[string]any) (map[string]any, error)
+	logger  *slog.Logger
+	bridge  domain.Bridge
+	catalog *catalog.Catalog
 }
 
-func New(logger *slog.Logger, svc *service.Services) *Server {
-	s := &Server{logger: logger, svc: svc, tools: map[string]func(context.Context, map[string]any) (map[string]any, error){}}
-	s.registerTaskTools()
-	s.registerProjectTools()
-	s.registerTagTools()
-	s.registerSystemTools()
-	return s
+// New wires a server against a bridge and a loaded catalog.
+func New(logger *slog.Logger, bridge domain.Bridge, cat *catalog.Catalog) *Server {
+	return &Server{logger: logger, bridge: bridge, catalog: cat}
 }
 
 // MCP JSON-RPC 2.0 wire types.
@@ -60,34 +63,29 @@ func (s *Server) replyErr(enc *json.Encoder, id json.RawMessage, code int, msg s
 	_ = enc.Encode(rpcMsg{JSONRPC: "2.0", ID: id, Error: &rpcError{Code: code, Message: msg}})
 }
 
-// toolDefs is returned for tools/list and drives the MCP capability advertisement.
-var toolDefs = []map[string]any{
-	// Tasks
-	{"name": "create_task", "description": "Create a new task in Super Productivity", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"title": map[string]any{"type": "string"}, "projectId": map[string]any{"type": "string"}, "notes": map[string]any{"type": "string"}, "tagIds": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}}},
-	{"name": "get_tasks", "description": "List tasks from Super Productivity", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"projectId": map[string]any{"type": "string"}, "includeCompleted": map[string]any{"type": "boolean"}}}},
-	{"name": "get_task", "description": "Get a specific task by ID", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	{"name": "update_task", "description": "Update an existing task", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}, "notes": map[string]any{"type": "string"}, "projectId": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	{"name": "complete_task", "description": "Mark a task as done", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	{"name": "uncomplete_task", "description": "Unmark a task as done", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	{"name": "archive_task", "description": "Archive a task", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	{"name": "add_time_to_task", "description": "Add tracked time to a task (duration in ms)", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}, "duration": map[string]any{"type": "integer"}}, "required": []string{"id", "duration"}}},
-	{"name": "reorder_task", "description": "Reorder a task's position in the list", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}, "position": map[string]any{"type": "integer"}}, "required": []string{"id"}}},
-	// Projects
-	{"name": "get_projects", "description": "List all projects", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
-	{"name": "create_project", "description": "Create a new project", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"title": map[string]any{"type": "string"}}, "required": []string{"title"}}},
-	{"name": "update_project", "description": "Update an existing project", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	// Tags
-	{"name": "get_tags", "description": "List all tags", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
-	{"name": "create_tag", "description": "Create a new tag", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"title": map[string]any{"type": "string"}}, "required": []string{"title"}}},
-	{"name": "update_tag", "description": "Update an existing tag", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}, "title": map[string]any{"type": "string"}}, "required": []string{"id"}}},
-	// System
-	{"name": "show_notification", "description": "Show a notification in Super Productivity", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"message": map[string]any{"type": "string"}}, "required": []string{"message"}}},
-	{"name": "bridge_health", "description": "Check if the SP plugin bridge is healthy and responding", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
-	{"name": "bridge_capabilities", "description": "Get the SP plugin bridge capabilities and supported actions", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+// toolListEntry is the shape MCP clients expect from tools/list.
+type toolListEntry struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
 }
 
+func (s *Server) toolList() []toolListEntry {
+	tools := s.catalog.MCPTools()
+	out := make([]toolListEntry, len(tools))
+	for i, t := range tools {
+		out[i] = toolListEntry{Name: t.MCPName, Description: t.Description, InputSchema: t.InputSchema}
+	}
+	return out
+}
+
+// Serve reads JSON-RPC messages line-by-line from in and writes replies to out.
+// Returns scanner errors if the underlying reader fails.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
+	// MCP clients can send sizeable arguments (e.g. long task notes); raise
+	// the default 64 KiB token cap to 1 MiB so we don't truncate them.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
 
@@ -111,45 +109,71 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		switch msg.Method {
 		case "initialize":
 			s.reply(enc, msg.ID, map[string]any{
-				"protocolVersion": "2024-11-05",
+				"protocolVersion": version.MCPProtocolVersion,
 				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "super-productivity", "version": "1.0.0"},
+				"serverInfo":      map[string]any{"name": "super-productivity", "version": version.BinaryVersion},
 			})
 
 		case "tools/list":
-			s.reply(enc, msg.ID, map[string]any{"tools": toolDefs})
+			s.reply(enc, msg.ID, map[string]any{"tools": s.toolList()})
 
 		case "tools/call":
-			var p toolCallParams
-			if err := json.Unmarshal(msg.Params, &p); err != nil {
-				s.replyErr(enc, msg.ID, -32602, "invalid params: "+err.Error())
-				continue
-			}
-			h, ok := s.tools[p.Name]
-			if !ok {
-				s.reply(enc, msg.ID, map[string]any{
-					"content": []contentBlock{{Type: "text", Text: fmt.Sprintf("unknown tool %q", p.Name)}},
-					"isError": true,
-				})
-				continue
-			}
-			result, err := h(ctx, p.Arguments)
-			if err != nil {
-				s.reply(enc, msg.ID, map[string]any{
-					"content": []contentBlock{{Type: "text", Text: err.Error()}},
-					"isError": true,
-				})
-				continue
-			}
-			b, _ := json.Marshal(result)
-			s.reply(enc, msg.ID, map[string]any{
-				"content": []contentBlock{{Type: "text", Text: string(b)}},
-				"isError": false,
-			})
+			s.handleToolsCall(ctx, enc, msg)
 
 		default:
 			s.replyErr(enc, msg.ID, -32601, fmt.Sprintf("method not found: %s", msg.Method))
 		}
 	}
 	return scanner.Err()
+}
+
+func (s *Server) handleToolsCall(ctx context.Context, enc *json.Encoder, msg rpcMsg) {
+	var p toolCallParams
+	if err := json.Unmarshal(msg.Params, &p); err != nil {
+		s.replyErr(enc, msg.ID, -32602, "invalid params: "+err.Error())
+		return
+	}
+	tool := s.catalog.LookupMCP(p.Name)
+	if tool == nil {
+		s.reply(enc, msg.ID, map[string]any{
+			"content": []contentBlock{{Type: "text", Text: fmt.Sprintf("unknown tool %q", p.Name)}},
+			"isError": true,
+		})
+		return
+	}
+	args := p.Arguments
+	if args == nil {
+		args = map[string]any{}
+	}
+	if err := tool.Validate(args); err != nil {
+		s.reply(enc, msg.ID, errorContent(err))
+		return
+	}
+	resp, err := s.bridge.Call(ctx, domain.Request{Action: tool.Action, Payload: args})
+	if err != nil {
+		s.reply(enc, msg.ID, errorContent(err))
+		return
+	}
+	b, _ := json.Marshal(resp.Result)
+	s.reply(enc, msg.ID, map[string]any{
+		"content": []contentBlock{{Type: "text", Text: string(b)}},
+		"isError": false,
+	})
+}
+
+// errorContent renders any error (typed or plain) as an MCP isError reply.
+// Typed errors are surfaced as JSON so callers can inspect code/retryable.
+func errorContent(err error) map[string]any {
+	var te domain.TypedError
+	if errors.As(err, &te) {
+		b, _ := json.Marshal(te)
+		return map[string]any{
+			"content": []contentBlock{{Type: "text", Text: string(b)}},
+			"isError": true,
+		}
+	}
+	return map[string]any{
+		"content": []contentBlock{{Type: "text", Text: err.Error()}},
+		"isError": true,
+	}
 }

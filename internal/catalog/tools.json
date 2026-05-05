@@ -180,7 +180,10 @@
         "type": "object",
         "properties": {
           "message": { "type": "string" },
-          "type": { "type": "string", "enum": ["SUCCESS", "INFO", "WARNING", "ERROR"] }
+          "type": {
+            "type": "string",
+            "enum": ["SUCCESS", "INFO", "WARNING", "ERROR"]
+          }
         },
         "required": ["message"]
       }

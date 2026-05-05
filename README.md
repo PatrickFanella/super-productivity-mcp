@@ -20,6 +20,21 @@ Go + JS bridge rewrite of the Super Productivity MCP integration.
 - Non-interactive launcher: `scripts/run-mcp.sh`.
 - Client examples: `examples/clients/{claude,cursor,vscode}/mcp.json`.
 
+## Install
+
+One-shot install (build binary, set up data dir, install skill, print MCP config):
+
+```bash
+make install
+# or directly:
+bash scripts/install.sh
+```
+
+Honored env vars: `PREFIX`, `BIN_DIR`, `DATA_DIR`, `SKILLS_DIR`,
+`SKIP_BUILD`, `SKIP_SKILL`, `SKIP_DATA_DIR`. Defaults install to
+`~/.local/bin`, `~/.local/share/super-productivity-mcp`, and the first
+existing of `~/.agents/skills` or `~/.claude/skills`.
+
 ## Verification
 
 - Go unit tests: `go test ./...`

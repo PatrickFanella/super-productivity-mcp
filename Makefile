@@ -1,6 +1,9 @@
-.PHONY: test test-go test-js test-e2e sync-catalogs check-catalogs
+.PHONY: test test-go test-js test-e2e sync-catalogs check-catalogs install
 
 test: check-catalogs test-go test-js test-e2e
+
+install:
+	bash scripts/install.sh
 
 test-go:
 	go test ./...

@@ -3,7 +3,7 @@ name: super-productivity-mcp
 description: Diagnose and resolve Super Productivity MCP startup, handshake, and bridge reliability issues.
 license: MIT
 metadata:
-  author: onnwee
+  author: PatrickFanella
   version: "1.0"
   type: diagnostic
   mode: diagnostic+application
@@ -149,14 +149,14 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 Sends an MCP `initialize` request to a command and verifies a valid response.
 
 ```bash
-deno run --allow-run --allow-env --allow-read scripts/protocol_smoke.ts --command "/home/onnwee/.local/share/super-productivity-mcp/scripts/run-mcp.sh"
+deno run --allow-run --allow-env --allow-read scripts/protocol_smoke.ts --command "/path/to/super-productivity-mcp/scripts/run-mcp.sh"
 ```
 
 ### check_runtime_paths.ts
 Checks launcher executability, env defaults, and expected IPC directories.
 
 ```bash
-deno run --allow-read --allow-env scripts/check_runtime_paths.ts --data-dir "/home/onnwee/.local/share/super-productivity-mcp"
+deno run --allow-read --allow-env scripts/check_runtime_paths.ts --data-dir "/path/to/super-productivity-mcp-data"
 ```
 
 ## Reasoning Requirements

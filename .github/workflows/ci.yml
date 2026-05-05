@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check catalog sync
+        run: make check-catalogs
+
+      - name: Go tests
+        run: go test ./...
+
+      - name: JS bridge tests
+        run: node --test plugin/bridge/**/*.test.js
+
+      - name: E2E tests
+        run: go test ./test/e2e -v

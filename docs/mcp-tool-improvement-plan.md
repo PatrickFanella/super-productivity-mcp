@@ -14,6 +14,7 @@ Phase 1 has shipped the safety-first schedule primitives:
 - `get_tasks` can read `source: "active" | "archived" | "all"` when `PluginAPI.getArchivedTasks()` is available. `includeDone` remains backward-compatible and defaults to true.
 - Wave 2 shipped query visibility: `get_schedule_range`, `find_stale_schedule`, `find_unscheduled_active_tasks`, and `get_tasks` shaping with limit/offset/sort plus optional synthetic fields (`noteLength`, `subtaskCount`, `isRecurring`, `parentTitle`, `projectTitle`).
 - Wave 3 shipped local REST parity for `restore_task` plus Local REST-backed `start_task`, `stop_task`, and `get_current_task` when configured. Plugin mutation fallback remains for timer tools when REST is not configured.
+- Wave 4 shipped `make_planned_at` plus `auto_schedule_tasks`, a dry-run-first capacity packer for unscheduled active tasks. Applying schedules requires `dryRun:false` and `confirmApply:true`.
 
 Next phases should focus on richer query shaping, auto-scheduling, note hygiene, and API coverage beyond tasks.
 
@@ -254,11 +255,11 @@ These three remove most friction from safe, whole-app schedule cleanup.
 - Expose archived task reads explicitly when `PluginAPI.getArchivedTasks()` exists.
 - Add project batch-update coverage if a real workflow needs it.
 
-### Phase 4: planning automation
+### Phase 4: planning automation (shipped)
 
-- Add `make_planned_at` for local date/time conversion. Keep timezone support explicit; avoid silent UTC/local conversions.
-- Add `auto_schedule_tasks` as a dry-run-first workflow tool that uses capacity, max tasks/day, stale/overdue priority, and preserve-existing-plan rules.
-- Require dry-run by default for broad schedule rewrites unless `confirmApply:true` is supplied.
+- Added `make_planned_at` for local date/time conversion.
+- Added `auto_schedule_tasks` as a dry-run-first workflow tool that uses capacity, due-date ordering, top-level filtering, and preserve-existing-plan behavior.
+- Broad schedule rewrites stay dry-run unless `dryRun:false` and `confirmApply:true` are supplied.
 
 ### Phase 5: note and roadmap hygiene
 

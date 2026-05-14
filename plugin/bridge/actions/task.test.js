@@ -687,6 +687,38 @@ test("task.findUnscheduledActive filters top-level active tasks", async () => {
   assert.deepEqual(out.tasks.map((task) => task.id), ["match"]);
 });
 
+test("task.makePlannedAt converts local date and time", async () => {
+  const out = await taskActions["task.makePlannedAt"]({ date: "2026-05-14", time: "09:30", timezone: "local" });
+
+  assert.equal(out.plannedAt, new Date(2026, 4, 14, 9, 30).getTime());
+  assert.equal(out.timezone, "local");
+  assert.match(out.iso, /^2026-/);
+});
+
+test("task.autoSchedule dry-runs by default and applies with confirmation", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "a", title: "A", timeEstimate: 30 * 60000, isDone: false },
+      { id: "b", title: "B", timeEstimate: 45 * 60000, isDone: false },
+      { id: "planned", title: "Planned", plannedAt: 123, isDone: false },
+    ],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const dry = await taskActions["task.autoSchedule"]({ start_date: "2026-05-14", end_date: "2026-05-14", capacity_per_day_minutes: 60, timezone: "local" });
+  assert.equal(dry.dryRun, true);
+  assert.deepEqual(dry.updates.map((update) => update.taskId), ["a"]);
+  assert.deepEqual(dry.skipped.map((task) => task.id), ["b"]);
+  assert.deepEqual(updates, []);
+
+  const applied = await taskActions["task.autoSchedule"]({ startDate: "2026-05-14", capacityPerDayMinutes: 60, timezone: "local", dryRun: false, confirmApply: true });
+  assert.equal(applied.dryRun, false);
+  assert.equal(applied.results[0].success, true);
+  assert.equal(updates[0].taskId, "a");
+  assert.equal(typeof updates[0].data.plannedAt, "number");
+});
+
 test("task.update forwards dueDay and plannedAt", async () => {
   let received;
   global.PluginAPI = {

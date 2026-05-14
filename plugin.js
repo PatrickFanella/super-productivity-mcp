@@ -700,6 +700,50 @@
     return { tasks };
   }
 
+  async function taskMakePlannedAt(payload) {
+    payload = payload || {};
+    const date = payload.date;
+    const time = payload.time || '09:00';
+    const timezone = payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be YYYY-MM-DD', false);
+    if (!/^\d{1,2}:\d{2}$/.test(time)) throw typedError('INVALID_REQUEST', 'time must be HH:MM', false);
+    const plannedAt = zonedWallTimeToMs(date, time, timezone);
+    return { plannedAt, iso: new Date(plannedAt).toISOString(), timezone };
+  }
+
+  async function taskAutoSchedule(payload) {
+    payload = payload || {};
+    const startDate = payload.startDate || payload.start_date;
+    const endDate = payload.endDate || payload.end_date || startDate;
+    if (!isLocalDateString(startDate)) throw typedError('INVALID_REQUEST', 'startDate must be YYYY-MM-DD', false);
+    if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be YYYY-MM-DD', false);
+    const timezone = payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+    const capacityMs = Math.max(1, Number(valueOf(payload, 'capacityPerDayMinutes', 'capacity_per_day_minutes') || 240)) * 60000;
+    const defaultEstimateMs = Math.max(1, Number(valueOf(payload, 'defaultEstimateMinutes', 'default_estimate_minutes') || 30)) * 60000;
+    const workStart = payload.workStart || payload.work_start || (payload.workHours && payload.workHours[0] && payload.workHours[0].start) || '09:00';
+    const dryRun = valueOf(payload, 'dryRun', 'dry_run') !== false || valueOf(payload, 'confirmApply', 'confirm_apply') !== true;
+    const candidates = (await getTasksBySource('active'))
+      .filter((task) => !task.isDone && !task.isArchived && task.plannedAt == null)
+      .filter((task) => !(payload.rules && payload.rules.topLevelOnly) || !task.parentId)
+      .filter((task) => !(payload.includeProjectIds && payload.includeProjectIds.length) || payload.includeProjectIds.includes(task.projectId))
+      .filter((task) => !(payload.excludeProjectIds && payload.excludeProjectIds.length) || !payload.excludeProjectIds.includes(task.projectId))
+      .sort((a, b) => String(a.dueDay || '9999-99-99').localeCompare(String(b.dueDay || '9999-99-99')) || String(a.title || '').localeCompare(String(b.title || '')));
+    const days = localDateRange(startDate, endDate).map((date) => ({ date, usedMs: 0, nextMs: zonedWallTimeToMs(date, workStart, timezone) }));
+    const updates = [];
+    const skipped = [];
+    for (const task of candidates) {
+      const estimateMs = Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs;
+      const day = days.find((candidate) => candidate.usedMs + estimateMs <= capacityMs);
+      if (!day) { skipped.push(Object.assign(compactTaskSummary(task), { reason: 'capacity_exhausted' })); continue; }
+      updates.push({ taskId: task.id, plannedAt: day.nextMs });
+      day.usedMs += estimateMs;
+      day.nextMs += estimateMs;
+    }
+    const result = { dryRun, startDate, endDate, timezone, updates, scheduledCount: updates.length, skipped };
+    if (!dryRun) result.results = (await taskBulkUpdateCore({ updates, dryRun: false }, ['plannedAt'])).results;
+    return result;
+  }
+
   function compactTaskSummary(task) {
     return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, plannedAt: task.plannedAt, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
   }
@@ -727,6 +771,28 @@
       if (localDateStr(cursor) === endDate) break;
     }
     return dates;
+  }
+
+  function zonedWallTimeToMs(dateStr, timeStr, timezone) {
+    const dateParts = dateStr.split('-').map(Number);
+    const timeParts = timeStr.split(':').map(Number);
+    if (!timezone || timezone === 'local' || timezone === Intl.DateTimeFormat().resolvedOptions().timeZone) return new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1]).getTime();
+    const targetWall = Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1]);
+    let guess = targetWall;
+    for (let i = 0; i < 4; i++) {
+      const parts = zonedDateParts(new Date(guess), timezone);
+      const actualWall = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+      const delta = targetWall - actualWall;
+      if (delta === 0) break;
+      guess += delta;
+    }
+    return guess;
+  }
+
+  function zonedDateParts(date, timezone) {
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const parts = Object.fromEntries(formatter.formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, Number(part.value)]));
+    return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute };
   }
 
   async function taskPlanToday(payload) {
@@ -847,6 +913,8 @@
     'task.scheduleRange': taskScheduleRange,
     'task.findStaleSchedule': taskFindStaleSchedule,
     'task.findUnscheduledActive': taskFindUnscheduledActive,
+    'task.makePlannedAt': taskMakePlannedAt,
+    'task.autoSchedule': taskAutoSchedule,
     'task.planToday': taskPlanToday,
     'task.addTag': taskAddTag,
     'task.removeTag': taskRemoveTag,

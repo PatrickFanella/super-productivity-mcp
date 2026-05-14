@@ -410,6 +410,48 @@
       }
     },
     {
+      "mcpName": "make_planned_at",
+      "action": "task.makePlannedAt",
+      "description": "Convert a local date/time and timezone into a plannedAt timestamp",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "time": { "type": "string" },
+          "timezone": { "type": "string" }
+        },
+        "required": ["date"]
+      }
+    },
+    {
+      "mcpName": "auto_schedule_tasks",
+      "action": "task.autoSchedule",
+      "description": "Dry-run-first scheduler for unscheduled active tasks using daily capacity",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": { "type": "string" },
+          "start_date": { "type": "string" },
+          "endDate": { "type": "string" },
+          "end_date": { "type": "string" },
+          "timezone": { "type": "string" },
+          "capacityPerDayMinutes": { "type": "integer", "minimum": 1 },
+          "capacity_per_day_minutes": { "type": "integer", "minimum": 1 },
+          "defaultEstimateMinutes": { "type": "integer", "minimum": 1 },
+          "default_estimate_minutes": { "type": "integer", "minimum": 1 },
+          "workStart": { "type": "string" },
+          "work_start": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "dry_run": { "type": "boolean" },
+          "confirmApply": { "type": "boolean" },
+          "confirm_apply": { "type": "boolean" },
+          "includeProjectIds": { "type": "array", "items": { "type": "string" } },
+          "excludeProjectIds": { "type": "array", "items": { "type": "string" } },
+          "rules": { "type": "object" }
+        }
+      }
+    },
+    {
       "mcpName": "plan_tasks_for_today",
       "action": "task.planToday",
       "description": "Plan or unplan multiple tasks for today using plannedAt",

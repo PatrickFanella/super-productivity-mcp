@@ -79,6 +79,9 @@ var superProductivityResources = []resourceDef{
 	{URI: "sp://tags", Name: "Tags", Description: "All Super Productivity tags", Action: "tag.list", Payload: map[string]any{}},
 	{URI: "sp://tasks/today", Name: "Tasks planned today", Description: "Incomplete tasks planned for today", Action: "task.list", Payload: map[string]any{"includeDone": false, "plannedForToday": true}},
 	{URI: "sp://tasks/overdue", Name: "Overdue tasks", Description: "Incomplete tasks with due dates before today", Action: "task.list", Payload: map[string]any{"includeDone": false, "overdue": true}},
+	{URI: "sp://tasks/unscheduled", Name: "Unscheduled active tasks", Description: "Active top-level tasks with no planned date or due date", Action: "task.findUnscheduledActive", Payload: map[string]any{"topLevelOnly": true}},
+	{URI: "sp://schedule/today", Name: "Today schedule", Description: "Incomplete tasks planned today with concise synthetic metadata", Action: "task.list", Payload: map[string]any{"includeDone": false, "plannedForToday": true, "includeSynthetic": true, "sortBy": "plannedAt"}},
+	{URI: "sp://schedule/health", Name: "Schedule health", Description: "Schedule hygiene counts and concise task lists", Action: "task.scheduleHealth", Payload: map[string]any{}},
 }
 
 func (s *Server) reply(enc *json.Encoder, id json.RawMessage, result any) {

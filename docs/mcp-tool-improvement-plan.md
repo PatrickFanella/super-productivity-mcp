@@ -16,8 +16,9 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 3 shipped local REST parity for `restore_task` plus Local REST-backed `start_task`, `stop_task`, and `get_current_task` when configured. Plugin mutation fallback remains for timer tools when REST is not configured.
 - Wave 4 shipped `make_planned_at` plus `auto_schedule_tasks`, a dry-run-first capacity packer for unscheduled active tasks. Applying schedules requires `dryRun:false` and `confirmApply:true`.
 - Wave 5 shipped `compact_task_notes`, a dry-run-first note replacement tool that requires caller-provided replacement notes and reports old/new note sizes before applying.
+- Wave 6 shipped schedule-focused MCP resources: `sp://tasks/unscheduled`, `sp://schedule/today`, and `sp://schedule/health`.
 
-Next phases should focus on resources, evals, and polish.
+Next phases should focus on evals and polish.
 
 ## Top priorities
 
@@ -266,8 +267,9 @@ These three remove most friction from safe, whole-app schedule cleanup.
 - Added a safe `compact_task_notes` tool that requires caller-supplied replacement notes and returns old/new sizes.
 - Avoids LLM summarization inside the plugin bridge. The MCP client generates the compacted note, then this server applies it only after preview/confirmation.
 
-### Phase 6: catalog and evaluation hardening
+### Phase 6: catalog and evaluation hardening (partially shipped)
 
+- Added schedule-focused resources for common read-only inspection workflows.
 - Add tool-level examples to catalog descriptions where schemas are ambiguous.
 - Add read-only eval prompts covering schedule cleanup, archive support, and task discovery.
 - Keep `internal/catalog/tools.json` as SSOT and enforce `make check-catalogs` in CI.

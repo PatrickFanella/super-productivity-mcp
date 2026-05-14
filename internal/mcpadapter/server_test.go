@@ -120,7 +120,7 @@ func TestResourcesListExposesSuperProductivityResources(t *testing.T) {
 		res := raw.(map[string]any)
 		uris[res["uri"].(string)] = true
 	}
-	for _, uri := range []string{"sp://projects", "sp://tags", "sp://tasks/today", "sp://tasks/overdue"} {
+	for _, uri := range []string{"sp://projects", "sp://tags", "sp://tasks/today", "sp://tasks/overdue", "sp://tasks/unscheduled", "sp://schedule/today", "sp://schedule/health"} {
 		if !uris[uri] {
 			t.Fatalf("missing resource %s in %#v", uri, resources)
 		}
@@ -144,6 +144,35 @@ func TestResourcesReadDispatchesToBridge(t *testing.T) {
 	}
 	if !strings.Contains(content["text"].(string), `"t1"`) {
 		t.Fatalf("unexpected content text %q", content["text"])
+	}
+}
+
+func TestScheduleResourceReadsDispatchToBridge(t *testing.T) {
+	br := &stubBridge{resp: domain.Response{Result: map[string]any{"counts": map[string]any{"overdue": 1}}}}
+	s := newServer(t, br)
+	reply := runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"sp://schedule/health"}}`)
+	if br.lastReq.Action != "task.scheduleHealth" {
+		t.Fatalf("dispatched action %q", br.lastReq.Action)
+	}
+	contents := reply["result"].(map[string]any)["contents"].([]any)
+	content := contents[0].(map[string]any)
+	if content["uri"] != "sp://schedule/health" || content["mimeType"] != "application/json" {
+		t.Fatalf("unexpected content metadata %#v", content)
+	}
+	if !strings.Contains(content["text"].(string), `"overdue"`) {
+		t.Fatalf("unexpected content text %q", content["text"])
+	}
+}
+
+func TestTasksUnscheduledResourceDispatchesTopLevelFilter(t *testing.T) {
+	br := &stubBridge{resp: domain.Response{Result: map[string]any{"tasks": []any{}}}}
+	s := newServer(t, br)
+	_ = runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"sp://tasks/unscheduled"}}`)
+	if br.lastReq.Action != "task.findUnscheduledActive" {
+		t.Fatalf("dispatched action %q", br.lastReq.Action)
+	}
+	if br.lastReq.Payload["topLevelOnly"] != true {
+		t.Fatalf("unexpected payload %#v", br.lastReq.Payload)
 	}
 }
 

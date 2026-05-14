@@ -221,6 +221,9 @@ The full schema for each tool lives in [`internal/catalog/tools.json`](internal/
 | `sp://tags` | All Super Productivity tags as JSON |
 | `sp://tasks/today` | Incomplete tasks planned for today as JSON |
 | `sp://tasks/overdue` | Incomplete overdue tasks as JSON |
+| `sp://tasks/unscheduled` | Active top-level tasks with no planned date or due date as JSON |
+| `sp://schedule/today` | Incomplete tasks planned today with concise synthetic metadata as JSON |
+| `sp://schedule/health` | Schedule hygiene counts and concise task lists as JSON |
 
 ## Package the Super Productivity plugin
 

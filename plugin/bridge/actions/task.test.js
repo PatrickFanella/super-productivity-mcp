@@ -555,6 +555,81 @@ test("task.list supports recurring-only and field selection", async () => {
   assert.deepEqual(out.tasks, [{ id: "rec", title: "Recurring" }]);
 });
 
+test("task.list supports archived source, synthetic fields, sorting and paging", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "parent", title: "Parent", projectId: "p1", notes: "12345", subTaskIds: ["child"], created: 2 },
+      { id: "child", title: "Child", parentId: "parent", projectId: "p1", notes: "", created: 1 },
+    ],
+    getArchivedTasks: async () => [{ id: "arch", title: "Archived", projectId: "p2", isDone: true, created: 3 }],
+    getAllProjects: async () => [{ id: "p1", title: "Work" }, { id: "p2", title: "Done" }],
+  };
+
+  const out = await taskActions["task.list"]({
+    source: "all",
+    includeSynthetic: true,
+    sort_by: "created",
+    sort_direction: "desc",
+    limit: 2,
+    fields: ["id", "projectTitle", "parentTitle", "noteLength", "subtaskCount", "isArchived"],
+  });
+
+  assert.deepEqual(out.tasks, [
+    { id: "arch", projectTitle: "Done", parentTitle: undefined, noteLength: 0, subtaskCount: 0, isArchived: true },
+    { id: "parent", projectTitle: "Work", parentTitle: undefined, noteLength: 5, subtaskCount: 1, isArchived: false },
+  ]);
+});
+
+test("task.scheduleRange groups planned tasks by local date", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "a", title: "A", plannedAt: new Date(2026, 4, 14, 9).getTime(), isDone: false },
+      { id: "b", title: "B", plannedAt: new Date(2026, 4, 15, 9).getTime(), isDone: false },
+      { id: "done", title: "Done", plannedAt: new Date(2026, 4, 14, 10).getTime(), isDone: true },
+    ],
+  };
+
+  const out = await taskActions["task.scheduleRange"]({ start_date: "2026-05-14", end_date: "2026-05-15" });
+
+  assert.deepEqual(out.days.map((day) => ({ date: day.date, ids: day.tasks.map((task) => task.id) })), [
+    { date: "2026-05-14", ids: ["a"] },
+    { date: "2026-05-15", ids: ["b"] },
+  ]);
+});
+
+test("task.findStaleSchedule finds stale due and planned tasks", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "due", title: "Due", dueDay: "2026-05-01", isDone: false },
+      { id: "planned", title: "Planned", plannedAt: new Date(2026, 4, 1).getTime(), isDone: false },
+      { id: "fresh", title: "Fresh", dueDay: "2026-05-20", plannedAt: new Date(2026, 4, 20).getTime(), isDone: false },
+    ],
+  };
+
+  const out = await taskActions["task.findStaleSchedule"]({ before_date: "2026-05-10" });
+
+  assert.deepEqual(out.tasks.map((task) => ({ id: task.id, staleDueDay: task.staleDueDay, stalePlannedAt: task.stalePlannedAt })), [
+    { id: "due", staleDueDay: true, stalePlannedAt: false },
+    { id: "planned", staleDueDay: false, stalePlannedAt: true },
+  ]);
+});
+
+test("task.findUnscheduledActive filters top-level active tasks", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "match", title: "Match", projectId: "p1", tagIds: ["t1"], timeEstimate: 0, isDone: false },
+      { id: "child", title: "Child", parentId: "match", projectId: "p1", tagIds: ["t1"], timeEstimate: 0, isDone: false },
+      { id: "planned", title: "Planned", projectId: "p1", plannedAt: 1, isDone: false },
+      { id: "done", title: "Done", projectId: "p1", isDone: true },
+      { id: "excluded", title: "Excluded", projectId: "p2", isDone: false },
+    ],
+  };
+
+  const out = await taskActions["task.findUnscheduledActive"]({ include_project_ids: ["p1"], include_tag_ids: ["t1"], missing_estimate_only: true });
+
+  assert.deepEqual(out.tasks.map((task) => task.id), ["match"]);
+});
+
 test("task.update forwards dueDay and plannedAt", async () => {
   let received;
   global.PluginAPI = {

@@ -360,6 +360,8 @@
       tasks = tasks.filter((t) => t.plannedAt != null && t.plannedAt >= start && t.plannedAt < end);
     }
     if (valueOf(payload, 'recurringOnly', 'recurring_only')) tasks = tasks.filter((t) => !!(t.repeatCfgId || t.recurrenceRule || t.repeatCycle));
+    if (valueOf(payload, 'includeSynthetic', 'include_synthetic')) tasks = await withSyntheticTaskFields(tasks);
+    tasks = sortAndPageTasks(tasks, payload);
     const fields = Array.isArray(payload.fields) ? payload.fields : [];
     if (fields.length > 0) tasks = tasks.map((task) => pickFields(task, fields));
     return { tasks };
@@ -372,6 +374,43 @@
     if (typeof PluginAPI.getArchivedTasks !== 'function') return normalized === 'archived' ? [] : active;
     const archived = (await PluginAPI.getArchivedTasks()).map((task) => Object.assign({}, task, { isArchived: true }));
     return normalized === 'archived' ? archived : active.concat(archived);
+  }
+
+  async function withSyntheticTaskFields(tasks) {
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    const projects = typeof PluginAPI.getAllProjects === 'function' ? await PluginAPI.getAllProjects() : [];
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    return tasks.map((task) => Object.assign({}, task, {
+      noteLength: String(task.notes || '').length,
+      subtaskCount: Array.isArray(task.subTaskIds) ? task.subTaskIds.length : tasks.filter((candidate) => candidate.parentId === task.id).length,
+      isRecurring: !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle),
+      parentTitle: task.parentId ? (byId.get(task.parentId) || {}).title : undefined,
+      projectTitle: task.projectId ? (projectById.get(task.projectId) || {}).title || (projectById.get(task.projectId) || {}).name : undefined,
+    }));
+  }
+
+  function sortAndPageTasks(tasks, payload) {
+    const sortBy = valueOf(payload || {}, 'sortBy', 'sort_by');
+    let out = tasks.slice();
+    if (['title', 'created', 'updated', 'dueDay', 'plannedAt', 'timeEstimate'].includes(sortBy)) {
+      const direction = valueOf(payload || {}, 'sortDirection', 'sort_direction') === 'desc' ? -1 : 1;
+      out.sort((a, b) => compareTaskField(a, b, sortBy) * direction);
+    }
+    const offset = Math.max(0, Number(valueOf(payload || {}, 'offset', 'offset') || 0));
+    const limitValue = valueOf(payload || {}, 'limit', 'limit');
+    if (offset > 0) out = out.slice(offset);
+    if (limitValue != null) out = out.slice(0, Math.max(0, Number(limitValue)));
+    return out;
+  }
+
+  function compareTaskField(a, b, field) {
+    const av = a[field];
+    const bv = b[field];
+    if (av == null && bv == null) return String(a.title || '').localeCompare(String(b.title || ''));
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'number' || typeof bv === 'number') return Number(av) - Number(bv);
+    return String(av).localeCompare(String(bv)) || String(a.title || '').localeCompare(String(b.title || ''));
   }
 
   function valueOf(obj, camelName, snakeName) {
@@ -594,6 +633,68 @@
     return { date, staleBeforeDate, counts, tasks: compactLists };
   }
 
+  async function taskScheduleRange(payload) {
+    payload = payload || {};
+    const startDate = valueOf(payload, 'startDate', 'start_date');
+    const endDate = valueOf(payload, 'endDate', 'end_date') || startDate;
+    if (!isLocalDateString(startDate)) throw typedError('INVALID_REQUEST', 'startDate must be YYYY-MM-DD', false);
+    if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be YYYY-MM-DD', false);
+    const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
+    const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
+    const startMs = dayRangeMs(startDate)[0];
+    const endMs = dayRangeMs(endDate)[1];
+    const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active'))
+      .filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived))
+      .filter((task) => task.plannedAt != null && task.plannedAt >= startMs && task.plannedAt < endMs)
+      .sort((a, b) => Number(a.plannedAt || 0) - Number(b.plannedAt || 0) || String(a.title || '').localeCompare(String(b.title || '')));
+    const byDate = new Map(localDateRange(startDate, endDate).map((date) => [date, []]));
+    for (const task of tasks) {
+      const date = localDateStr(new Date(task.plannedAt));
+      if (byDate.has(date)) byDate.get(date).push(compactTaskSummary(task));
+    }
+    return { startDate, endDate, days: Array.from(byDate.entries()).map((pair) => ({ date: pair[0], tasks: pair[1] })) };
+  }
+
+  async function taskFindStaleSchedule(payload) {
+    payload = payload || {};
+    const beforeDate = valueOf(payload, 'beforeDate', 'before_date');
+    if (!isLocalDateString(beforeDate)) throw typedError('INVALID_REQUEST', 'beforeDate must be YYYY-MM-DD', false);
+    const includeDueDay = valueOf(payload, 'includeDueDay', 'include_due_day') !== false;
+    const includePlannedAt = valueOf(payload, 'includePlannedAt', 'include_planned_at') !== false;
+    const includeCompleted = valueOf(payload, 'includeCompleted', 'include_completed') === true;
+    const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
+    const beforeMs = dayRangeMs(beforeDate)[0];
+    const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active'))
+      .filter((task) => (includeCompleted || !task.isDone) && (includeArchived || !task.isArchived))
+      .map((task) => ({ task, staleDueDay: includeDueDay && task.dueDay != null && task.dueDay < beforeDate, stalePlannedAt: includePlannedAt && task.plannedAt != null && task.plannedAt < beforeMs }))
+      .filter((entry) => entry.staleDueDay || entry.stalePlannedAt)
+      .map((entry) => Object.assign(compactTaskSummary(entry.task), { staleDueDay: entry.staleDueDay, stalePlannedAt: entry.stalePlannedAt }));
+    return { beforeDate, tasks };
+  }
+
+  async function taskFindUnscheduledActive(payload) {
+    payload = payload || {};
+    const topLevelOnly = valueOf(payload, 'topLevelOnly', 'top_level_only') !== false;
+    const missingEstimateOnly = valueOf(payload, 'missingEstimateOnly', 'missing_estimate_only') === true;
+    const missingDueDateOnly = valueOf(payload, 'missingDueDateOnly', 'missing_due_date_only') === true;
+    const includeProjectIds = valueOf(payload, 'includeProjectIds', 'include_project_ids') || [];
+    const excludeProjectIds = valueOf(payload, 'excludeProjectIds', 'exclude_project_ids') || [];
+    const includeTagIds = valueOf(payload, 'includeTagIds', 'include_tag_ids') || [];
+    const excludeTagIds = valueOf(payload, 'excludeTagIds', 'exclude_tag_ids') || [];
+    const tasks = (await getTasksBySource('active'))
+      .filter((task) => !task.isDone && !task.isArchived)
+      .filter((task) => task.plannedAt == null && task.dueDay == null)
+      .filter((task) => !topLevelOnly || !task.parentId)
+      .filter((task) => !missingEstimateOnly || !Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) <= 0)
+      .filter((task) => !missingDueDateOnly || !task.dueDay)
+      .filter((task) => includeProjectIds.length === 0 || includeProjectIds.includes(task.projectId))
+      .filter((task) => excludeProjectIds.length === 0 || !excludeProjectIds.includes(task.projectId))
+      .filter((task) => includeTagIds.length === 0 || includeTagIds.some((tagId) => (task.tagIds || []).includes(tagId)))
+      .filter((task) => excludeTagIds.length === 0 || !excludeTagIds.some((tagId) => (task.tagIds || []).includes(tagId)))
+      .map(compactTaskSummary);
+    return { tasks };
+  }
+
   function compactTaskSummary(task) {
     return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, plannedAt: task.plannedAt, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
   }
@@ -610,6 +711,17 @@
     const parts = dateStr.split('-').map(Number);
     const start = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
     return [start, start + 86400000];
+  }
+
+  function localDateRange(startDate, endDate) {
+    const dates = [];
+    const parts = startDate.split('-').map(Number);
+    const endMs = dayRangeMs(endDate)[0];
+    for (let cursor = new Date(parts[0], parts[1] - 1, parts[2]); cursor.getTime() <= endMs; cursor.setDate(cursor.getDate() + 1)) {
+      dates.push(localDateStr(cursor));
+      if (localDateStr(cursor) === endDate) break;
+    }
+    return dates;
   }
 
   async function taskPlanToday(payload) {
@@ -726,6 +838,9 @@
     'task.bulkReschedule': taskBulkReschedule,
     'task.clearScheduleForDay': taskClearScheduleForDay,
     'task.scheduleHealth': taskScheduleHealth,
+    'task.scheduleRange': taskScheduleRange,
+    'task.findStaleSchedule': taskFindStaleSchedule,
+    'task.findUnscheduledActive': taskFindUnscheduledActive,
     'task.planToday': taskPlanToday,
     'task.addTag': taskAddTag,
     'task.removeTag': taskRemoveTag,

@@ -186,6 +186,9 @@ Popup asset lookup order:
 | `bulk_reschedule_tasks` | Update only schedule fields (`plannedAt`, `dueDay`, `timeEstimate`) for multiple tasks with dry-run diffs |
 | `clear_schedule_for_day` | Clear `plannedAt` for tasks planned on a local date, optionally clearing matching `dueDay` values |
 | `get_schedule_health` | Summarize schedule hygiene counts and concise task lists for cleanup planning |
+| `get_schedule_range` | Read planned tasks grouped by local date for a date range |
+| `find_stale_schedule` | Find active tasks planned or due before a cutoff date |
+| `find_unscheduled_active_tasks` | Find active tasks with no `plannedAt` and no `dueDay` using project/tag/estimate filters |
 | `plan_tasks_for_today` | Plan or unplan multiple tasks for today using `plannedAt` |
 | `add_tag_to_task` | Add one tag to a task without replacing existing tags; idempotent if already present |
 | `remove_tag_from_task` | Remove one tag from a task without replacing other tags; errors if absent |

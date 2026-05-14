@@ -48,6 +48,14 @@
           "recurringOnly": { "type": "boolean" },
           "recurring_only": { "type": "boolean" },
           "source": { "type": "string", "enum": ["active", "archived", "all"] },
+          "includeSynthetic": { "type": "boolean" },
+          "include_synthetic": { "type": "boolean" },
+          "sortBy": { "type": "string", "enum": ["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"] },
+          "sort_by": { "type": "string", "enum": ["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"] },
+          "sortDirection": { "type": "string", "enum": ["asc", "desc"] },
+          "sort_direction": { "type": "string", "enum": ["asc", "desc"] },
+          "limit": { "type": "integer", "minimum": 0 },
+          "offset": { "type": "integer", "minimum": 0 },
           "fields": { "type": "array", "items": { "type": "string" } }
         }
       }
@@ -324,6 +332,68 @@
           "include_done": { "type": "boolean" },
           "includeArchived": { "type": "boolean" },
           "include_archived": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "mcpName": "get_schedule_range",
+      "action": "task.scheduleRange",
+      "description": "Read planned tasks grouped by local date for a date range",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": { "type": "string" },
+          "start_date": { "type": "string" },
+          "endDate": { "type": "string" },
+          "end_date": { "type": "string" },
+          "includeDone": { "type": "boolean" },
+          "include_done": { "type": "boolean" },
+          "includeArchived": { "type": "boolean" },
+          "include_archived": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "mcpName": "find_stale_schedule",
+      "action": "task.findStaleSchedule",
+      "description": "Find active tasks planned or due before a cutoff date",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "beforeDate": { "type": "string" },
+          "before_date": { "type": "string" },
+          "includeDueDay": { "type": "boolean" },
+          "include_due_day": { "type": "boolean" },
+          "includePlannedAt": { "type": "boolean" },
+          "include_planned_at": { "type": "boolean" },
+          "includeCompleted": { "type": "boolean" },
+          "include_completed": { "type": "boolean" },
+          "includeArchived": { "type": "boolean" },
+          "include_archived": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "mcpName": "find_unscheduled_active_tasks",
+      "action": "task.findUnscheduledActive",
+      "description": "Find active tasks with no plannedAt and no dueDay using project/tag/estimate filters",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topLevelOnly": { "type": "boolean" },
+          "top_level_only": { "type": "boolean" },
+          "missingEstimateOnly": { "type": "boolean" },
+          "missing_estimate_only": { "type": "boolean" },
+          "missingDueDateOnly": { "type": "boolean" },
+          "missing_due_date_only": { "type": "boolean" },
+          "includeProjectIds": { "type": "array", "items": { "type": "string" } },
+          "include_project_ids": { "type": "array", "items": { "type": "string" } },
+          "excludeProjectIds": { "type": "array", "items": { "type": "string" } },
+          "exclude_project_ids": { "type": "array", "items": { "type": "string" } },
+          "includeTagIds": { "type": "array", "items": { "type": "string" } },
+          "include_tag_ids": { "type": "array", "items": { "type": "string" } },
+          "excludeTagIds": { "type": "array", "items": { "type": "string" } },
+          "exclude_tag_ids": { "type": "array", "items": { "type": "string" } }
         }
       }
     },

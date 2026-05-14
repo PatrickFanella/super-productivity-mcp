@@ -12,6 +12,7 @@ Phase 1 has shipped the safety-first schedule primitives:
 - `get_schedule_health` returns cleanup counts plus compact task lists for planned-today, overdue, stale, unscheduled, missing-estimate, oversized-note, recurring, and suspicious-date/estimate buckets.
 - `archive_task` no longer silently marks done. True archive is available through optional local REST config (`SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`); marking done requires explicit `allowDoneFallback:true`.
 - `get_tasks` can read `source: "active" | "archived" | "all"` when `PluginAPI.getArchivedTasks()` is available. `includeDone` remains backward-compatible and defaults to true.
+- Wave 2 shipped query visibility: `get_schedule_range`, `find_stale_schedule`, `find_unscheduled_active_tasks`, and `get_tasks` shaping with limit/offset/sort plus optional synthetic fields (`noteLength`, `subtaskCount`, `isRecurring`, `parentTitle`, `projectTitle`).
 
 Next phases should focus on richer query shaping, auto-scheduling, note hygiene, and API coverage beyond tasks.
 
@@ -238,11 +239,11 @@ These three remove most friction from safe, whole-app schedule cleanup.
 
 ## Expanded implementation plan
 
-### Phase 2: query and schedule visibility
+### Phase 2: query and schedule visibility (shipped)
 
-- Add `get_schedule_range({ startDate, endDate })` grouped by local date and ordered by `plannedAt`.
-- Add focused discovery tools for stale scheduled tasks and unscheduled active top-level tasks.
-- Extend `get_tasks` with optional limit/offset/sort and synthetic fields: project title, parent title, subtask count, note length, generated recurring marker.
+- Added `get_schedule_range({ startDate, endDate })` grouped by local date and ordered by `plannedAt`.
+- Added focused discovery tools for stale scheduled tasks and unscheduled active top-level tasks.
+- Extended `get_tasks` with optional limit/offset/sort and synthetic fields: project title, parent title, subtask count, note length, generated recurring marker.
 - Add schedule resources such as `sp://schedule/today` and `sp://schedule/health` once the response shapes stabilize.
 
 ### Phase 3: true API parity

@@ -15,8 +15,9 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 2 shipped query visibility: `get_schedule_range`, `find_stale_schedule`, `find_unscheduled_active_tasks`, and `get_tasks` shaping with limit/offset/sort plus optional synthetic fields (`noteLength`, `subtaskCount`, `isRecurring`, `parentTitle`, `projectTitle`).
 - Wave 3 shipped local REST parity for `restore_task` plus Local REST-backed `start_task`, `stop_task`, and `get_current_task` when configured. Plugin mutation fallback remains for timer tools when REST is not configured.
 - Wave 4 shipped `make_planned_at` plus `auto_schedule_tasks`, a dry-run-first capacity packer for unscheduled active tasks. Applying schedules requires `dryRun:false` and `confirmApply:true`.
+- Wave 5 shipped `compact_task_notes`, a dry-run-first note replacement tool that requires caller-provided replacement notes and reports old/new note sizes before applying.
 
-Next phases should focus on richer query shaping, auto-scheduling, note hygiene, and API coverage beyond tasks.
+Next phases should focus on resources, evals, and polish.
 
 ## Top priorities
 
@@ -167,16 +168,15 @@ Why: “all active top-level tasks scheduled” should be verifiable with one fo
 
 ## Note/roadmap hygiene
 
-### 10. `compact_task_notes(taskId, strategy)`
+### 10. `compact_task_notes(taskId, replacementNotes)`
 
-Purpose-built note compaction for huge task notes.
+Purpose-built note replacement for huge task notes.
 
-Strategies:
+Behavior:
 
-- `summary-only`
-- `roadmap-review`
-- `archive-original-and-summarize`
-- `extract-checklist-to-subtasks`
+- Requires caller-provided `replacementNotes`; the bridge does not run LLM summarization.
+- Defaults to dry-run unless `dryRun:false` and `confirmApply:true` are supplied.
+- Returns `oldLength`, `newLength`, and `delta` before applying.
 
 Why: giant roadmap/checklist notes made task payloads hard to inspect and schedule.
 
@@ -261,10 +261,10 @@ These three remove most friction from safe, whole-app schedule cleanup.
 - Added `auto_schedule_tasks` as a dry-run-first workflow tool that uses capacity, due-date ordering, top-level filtering, and preserve-existing-plan behavior.
 - Broad schedule rewrites stay dry-run unless `dryRun:false` and `confirmApply:true` are supplied.
 
-### Phase 5: note and roadmap hygiene
+### Phase 5: note and roadmap hygiene (shipped)
 
-- Add a safe `compact_task_notes` tool that requires caller-supplied replacement notes and returns old/new sizes.
-- Avoid LLM summarization inside the plugin bridge. The MCP client should generate the compacted note, then this server should apply it with preview and rollback metadata.
+- Added a safe `compact_task_notes` tool that requires caller-supplied replacement notes and returns old/new sizes.
+- Avoids LLM summarization inside the plugin bridge. The MCP client generates the compacted note, then this server applies it only after preview/confirmation.
 
 ### Phase 6: catalog and evaluation hardening
 

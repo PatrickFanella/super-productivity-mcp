@@ -719,6 +719,38 @@ test("task.autoSchedule dry-runs by default and applies with confirmation", asyn
   assert.equal(typeof updates[0].data.plannedAt, "number");
 });
 
+test("task.compactNotes dry-runs by default and applies replacement notes with confirmation", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "notes", title: "Roadmap", notes: "Very long roadmap notes" }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const dry = await taskActions["task.compactNotes"]({ task_id: "notes", replacement_notes: "Compact notes" });
+  assert.deepEqual(dry, {
+    dryRun: true,
+    taskId: "notes",
+    title: "Roadmap",
+    oldLength: "Very long roadmap notes".length,
+    newLength: "Compact notes".length,
+    delta: "Compact notes".length - "Very long roadmap notes".length,
+  });
+  assert.deepEqual(updates, []);
+
+  const applied = await taskActions["task.compactNotes"]({ taskId: "notes", replacementNotes: "Compact notes", dryRun: false, confirmApply: true });
+  assert.equal(applied.dryRun, false);
+  assert.equal(applied.updated, true);
+  assert.deepEqual(updates, [{ taskId: "notes", data: { notes: "Compact notes" } }]);
+});
+
+test("task.compactNotes validates task and replacement notes", async () => {
+  global.PluginAPI = { getTasks: async () => [] };
+
+  await assert.rejects(taskActions["task.compactNotes"]({ replacementNotes: "x" }), (err) => err.code === "INVALID_REQUEST");
+  await assert.rejects(taskActions["task.compactNotes"]({ taskId: "missing", replacementNotes: "x" }), (err) => err.code === "TASK_NOT_FOUND");
+  await assert.rejects(taskActions["task.compactNotes"]({ taskId: "missing" }), (err) => err.code === "INVALID_REQUEST");
+});
+
 test("task.update forwards dueDay and plannedAt", async () => {
   let received;
   global.PluginAPI = {

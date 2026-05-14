@@ -744,6 +744,24 @@
     return result;
   }
 
+  async function taskCompactNotes(payload) {
+    payload = payload || {};
+    const taskId = valueOf(payload, 'taskId', 'task_id');
+    const replacementNotes = valueOf(payload, 'replacementNotes', 'replacement_notes');
+    if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
+    if (typeof replacementNotes !== 'string') throw typedError('INVALID_REQUEST', 'replacementNotes is required', false);
+    const task = await findTask(taskId);
+    if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+    const dryRun = valueOf(payload, 'dryRun', 'dry_run') !== false || valueOf(payload, 'confirmApply', 'confirm_apply') !== true;
+    const oldLength = String(task.notes || '').length;
+    const result = { dryRun, taskId, title: task.title, oldLength, newLength: replacementNotes.length, delta: replacementNotes.length - oldLength };
+    if (!dryRun) {
+      await PluginAPI.updateTask(taskId, { notes: replacementNotes });
+      result.updated = true;
+    }
+    return result;
+  }
+
   function compactTaskSummary(task) {
     return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, plannedAt: task.plannedAt, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
   }
@@ -915,6 +933,7 @@
     'task.findUnscheduledActive': taskFindUnscheduledActive,
     'task.makePlannedAt': taskMakePlannedAt,
     'task.autoSchedule': taskAutoSchedule,
+    'task.compactNotes': taskCompactNotes,
     'task.planToday': taskPlanToday,
     'task.addTag': taskAddTag,
     'task.removeTag': taskRemoveTag,

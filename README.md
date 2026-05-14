@@ -192,6 +192,7 @@ Popup asset lookup order:
 | `find_unscheduled_active_tasks` | Find active tasks with no `plannedAt` and no `dueDay` using project/tag/estimate filters |
 | `make_planned_at` | Convert a local date/time and timezone into a `plannedAt` timestamp |
 | `auto_schedule_tasks` | Dry-run-first scheduler for unscheduled active tasks using daily capacity |
+| `compact_task_notes` | Replace oversized task notes with caller-provided compact notes using dry-run-first size diffs |
 | `plan_tasks_for_today` | Plan or unplan multiple tasks for today using `plannedAt` |
 | `add_tag_to_task` | Add one tag to a task without replacing existing tags; idempotent if already present |
 | `remove_tag_from_task` | Remove one tag from a task without replacing other tags; errors if absent |

@@ -452,6 +452,24 @@
       }
     },
     {
+      "mcpName": "compact_task_notes",
+      "action": "task.compactNotes",
+      "description": "Replace oversized task notes with caller-provided compact notes using dry-run-first size diffs",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "replacementNotes": { "type": "string" },
+          "replacement_notes": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "dry_run": { "type": "boolean" },
+          "confirmApply": { "type": "boolean" },
+          "confirm_apply": { "type": "boolean" }
+        }
+      }
+    },
+    {
       "mcpName": "plan_tasks_for_today",
       "action": "task.planToday",
       "description": "Plan or unplan multiple tasks for today using plannedAt",

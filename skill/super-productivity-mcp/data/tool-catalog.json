@@ -4,16 +4,20 @@
     {
       "mcpName": "create_task",
       "action": "task.create",
-      "description": "Create a new task in Super Productivity",
+      "description": "Create a new task in Super Productivity. Supports short syntax in title: #tag, +project, @due, estimates like 30m or 1h/2h.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "title": { "type": "string" },
           "notes": { "type": "string" },
           "projectId": { "type": "string" },
+          "project_id": { "type": "string" },
           "parentId": { "type": "string" },
+          "parent_id": { "type": "string" },
           "timeEstimate": { "type": "integer", "minimum": 0 },
-          "tagIds": { "type": "array", "items": { "type": "string" } }
+          "time_estimate": { "type": "integer", "minimum": 0 },
+          "tagIds": { "type": "array", "items": { "type": "string" } },
+          "tag_ids": { "type": "array", "items": { "type": "string" } }
         },
         "required": ["title"]
       }
@@ -25,8 +29,58 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "includeDone": { "type": "boolean" }
+          "includeDone": { "type": "boolean" },
+          "projectId": { "type": "string" },
+          "project_id": { "type": "string" },
+          "tagId": { "type": "string" },
+          "tag_id": { "type": "string" },
+          "isDone": { "type": "boolean" },
+          "is_done": { "type": "boolean" },
+          "isArchived": { "type": "boolean" },
+          "is_archived": { "type": "boolean" },
+          "search": { "type": "string" },
+          "parentsOnly": { "type": "boolean" },
+          "parents_only": { "type": "boolean" },
+          "overdue": { "type": "boolean" },
+          "unscheduled": { "type": "boolean" },
+          "plannedForToday": { "type": "boolean" },
+          "planned_for_today": { "type": "boolean" },
+          "recurringOnly": { "type": "boolean" },
+          "recurring_only": { "type": "boolean" },
+          "fields": { "type": "array", "items": { "type": "string" } }
         }
+      }
+    },
+    {
+      "mcpName": "create_task_with_subtasks",
+      "action": "task.createWithSubtasks",
+      "description": "Create a parent task and subtasks in one operation. Supports short syntax in parent and subtask titles.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "notes": { "type": "string" },
+          "projectId": { "type": "string" },
+          "project_id": { "type": "string" },
+          "tagIds": { "type": "array", "items": { "type": "string" } },
+          "tag_ids": { "type": "array", "items": { "type": "string" } },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "notes": { "type": "string" },
+                "tagIds": { "type": "array", "items": { "type": "string" } },
+                "tag_ids": { "type": "array", "items": { "type": "string" } },
+                "timeEstimate": { "type": "integer", "minimum": 0 },
+                "time_estimate": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["title"]
+            }
+          }
+        },
+        "required": ["title", "subtasks"]
       }
     },
     {
@@ -52,9 +106,10 @@
           "title": { "type": "string" },
           "notes": { "type": "string" },
           "projectId": { "type": "string" },
-          "tagIds": { "type": "array", "items": { "type": "string" } }
-        },
-        "required": ["taskId"]
+          "tagIds": { "type": "array", "items": { "type": "string" } },
+          "dueDay": { "type": ["string", "null"] },
+          "plannedAt": { "type": ["integer", "null"] }
+        }
       }
     },
     {
@@ -88,6 +143,18 @@
       }
     },
     {
+      "mcpName": "delete_task",
+      "action": "task.delete",
+      "description": "Delete a task permanently when the Super Productivity plugin runtime supports deleteTask",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" }
+        }
+      }
+    },
+    {
       "mcpName": "add_time_to_task",
       "action": "task.addTime",
       "description": "Add tracked time to a task (timeMs is duration in milliseconds)",
@@ -101,6 +168,147 @@
       }
     },
     {
+      "mcpName": "start_task",
+      "action": "task.start",
+      "description": "Start time tracking on a task, stopping any other active task first",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "mcpName": "stop_task",
+      "action": "task.stop",
+      "description": "Stop the currently running time tracker; idempotent when nothing is running",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "mcpName": "get_current_task",
+      "action": "task.current",
+      "description": "Get the currently tracked task, or null when no timer is running",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "mcpName": "get_worklog",
+      "action": "task.worklog",
+      "description": "Summarize tracked task time for a date range from Super Productivity worklog fields",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": { "type": "string" },
+          "start_date": { "type": "string" },
+          "endDate": { "type": "string" },
+          "end_date": { "type": "string" }
+        }
+      }
+    },
+    {
+      "mcpName": "bulk_complete_tasks",
+      "action": "task.bulkComplete",
+      "description": "Mark multiple tasks complete with per-task partial success results",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskIds": { "type": "array", "items": { "type": "string" } },
+          "task_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "mcpName": "bulk_update_tasks",
+      "action": "task.bulkUpdate",
+      "description": "Update multiple tasks with per-task partial success results",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "updates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": { "type": "string" },
+                "task_id": { "type": "string" },
+                "title": { "type": "string" },
+                "notes": { "type": "string" },
+                "isDone": { "type": "boolean" },
+                "is_done": { "type": "boolean" },
+                "dueDay": { "type": ["string", "null"] },
+                "due_day": { "type": ["string", "null"] },
+                "plannedAt": { "type": ["integer", "null"] },
+                "planned_at": { "type": ["integer", "null"] },
+                "timeEstimate": { "type": "integer", "minimum": 0 },
+                "time_estimate": { "type": "integer", "minimum": 0 },
+                "timeSpent": { "type": "integer", "minimum": 0 },
+                "time_spent": { "type": "integer", "minimum": 0 },
+                "tagIds": { "type": "array", "items": { "type": "string" } },
+                "tag_ids": { "type": "array", "items": { "type": "string" } },
+                "projectId": { "type": "string" },
+                "project_id": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "mcpName": "plan_tasks_for_today",
+      "action": "task.planToday",
+      "description": "Plan or unplan multiple tasks for today using plannedAt",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskIds": { "type": "array", "items": { "type": "string" } },
+          "task_ids": { "type": "array", "items": { "type": "string" } },
+          "unplan": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "mcpName": "add_tag_to_task",
+      "action": "task.addTag",
+      "description": "Add one tag to a task without replacing existing tags; idempotent if already present",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "tagId": { "type": "string" },
+          "tag_id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "mcpName": "remove_tag_from_task",
+      "action": "task.removeTag",
+      "description": "Remove one tag from a task without replacing other tags; errors if absent",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "tagId": { "type": "string" },
+          "tag_id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "mcpName": "move_task_to_project",
+      "action": "task.moveToProject",
+      "description": "Move a top-level task to a project; rejects subtasks",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "projectId": { "type": "string" },
+          "project_id": { "type": "string" }
+        }
+      }
+    },
+    {
       "mcpName": "reorder_task",
       "action": "task.reorder",
       "description": "Reorder tasks within a project or tag context",
@@ -108,10 +316,29 @@
         "type": "object",
         "properties": {
           "taskIds": { "type": "array", "items": { "type": "string" } },
+          "task_ids": { "type": "array", "items": { "type": "string" } },
           "contextId": { "type": "string" },
-          "contextType": { "type": "string", "enum": ["project", "tag"] }
+          "context_id": { "type": "string" },
+          "contextType": { "type": "string", "enum": ["project", "tag", "parent"] },
+          "context_type": { "type": "string", "enum": ["project", "tag", "parent"] }
         },
         "required": ["taskIds"]
+      }
+    },
+    {
+      "mcpName": "reorder_tasks",
+      "action": "task.reorderTasks",
+      "description": "Upstream-compatible alias for reordering tasks within a project, tag, or parent task context",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskIds": { "type": "array", "items": { "type": "string" } },
+          "task_ids": { "type": "array", "items": { "type": "string" } },
+          "contextId": { "type": "string" },
+          "context_id": { "type": "string" },
+          "contextType": { "type": "string", "enum": ["project", "tag", "parent"] },
+          "context_type": { "type": "string", "enum": ["project", "tag", "parent"] }
+        }
       }
     },
     {
@@ -180,7 +407,10 @@
         "type": "object",
         "properties": {
           "message": { "type": "string" },
-          "type": { "type": "string", "enum": ["SUCCESS", "INFO", "WARNING", "ERROR"] }
+          "type": {
+            "type": "string",
+            "enum": ["SUCCESS", "INFO", "WARNING", "ERROR"]
+          }
         },
         "required": ["message"]
       }
@@ -189,6 +419,18 @@
       "mcpName": "bridge_health",
       "action": "bridge.health",
       "description": "Check if the SP plugin bridge is healthy and responding",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "mcpName": "check_connection",
+      "action": "bridge.checkConnection",
+      "description": "Upstream-compatible alias for checking whether Super Productivity and the plugin bridge are responding",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "mcpName": "debug_directories",
+      "action": "bridge.debugDirectories",
+      "description": "Show resolved plugin bridge IPC directories for diagnostics",
       "inputSchema": { "type": "object" }
     },
     {

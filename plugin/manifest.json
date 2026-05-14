@@ -7,5 +7,9 @@
   "minSupVersion": "14.0.0",
   "author": "Patrick Fanella",
   "homepage": "https://github.com/PatrickFanella/super-productivity-mcp",
-  "permissions": ["nodeExecution"]
+  "permissions": ["nodeExecution"],
+  "iFrame": true,
+  "isSkipMenuEntry": true,
+  "categories": ["integration", "automation"],
+  "tags": ["mcp", "ai", "integration"]
 }

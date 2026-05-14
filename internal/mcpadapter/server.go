@@ -50,9 +50,35 @@ type toolCallParams struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+type resourceReadParams struct {
+	URI string `json:"uri"`
+}
+
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
+}
+
+type resourceListEntry struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	MimeType    string `json:"mimeType"`
+}
+
+type resourceDef struct {
+	URI         string
+	Name        string
+	Description string
+	Action      string
+	Payload     map[string]any
+}
+
+var superProductivityResources = []resourceDef{
+	{URI: "sp://projects", Name: "Projects", Description: "All Super Productivity projects", Action: "project.list", Payload: map[string]any{}},
+	{URI: "sp://tags", Name: "Tags", Description: "All Super Productivity tags", Action: "tag.list", Payload: map[string]any{}},
+	{URI: "sp://tasks/today", Name: "Tasks planned today", Description: "Incomplete tasks planned for today", Action: "task.list", Payload: map[string]any{"includeDone": false, "plannedForToday": true}},
+	{URI: "sp://tasks/overdue", Name: "Overdue tasks", Description: "Incomplete tasks with due dates before today", Action: "task.list", Payload: map[string]any{"includeDone": false, "overdue": true}},
 }
 
 func (s *Server) reply(enc *json.Encoder, id json.RawMessage, result any) {
@@ -110,7 +136,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		case "initialize":
 			s.reply(enc, msg.ID, map[string]any{
 				"protocolVersion": version.MCPProtocolVersion,
-				"capabilities":    map[string]any{"tools": map[string]any{}},
+				"capabilities":    map[string]any{"tools": map[string]any{}, "resources": map[string]any{}},
 				"serverInfo":      map[string]any{"name": "super-productivity", "version": version.BinaryVersion},
 			})
 
@@ -120,11 +146,65 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		case "tools/call":
 			s.handleToolsCall(ctx, enc, msg)
 
+		case "resources/list":
+			s.reply(enc, msg.ID, map[string]any{"resources": s.resourceList()})
+
+		case "resources/read":
+			s.handleResourcesRead(ctx, enc, msg)
+
 		default:
 			s.replyErr(enc, msg.ID, -32601, fmt.Sprintf("method not found: %s", msg.Method))
 		}
 	}
 	return scanner.Err()
+}
+
+func (s *Server) resourceList() []resourceListEntry {
+	out := make([]resourceListEntry, len(superProductivityResources))
+	for i, res := range superProductivityResources {
+		out[i] = resourceListEntry{URI: res.URI, Name: res.Name, Description: res.Description, MimeType: "application/json"}
+	}
+	return out
+}
+
+func lookupResource(uri string) *resourceDef {
+	for _, res := range superProductivityResources {
+		if res.URI == uri {
+			copyRes := res
+			return &copyRes
+		}
+	}
+	return nil
+}
+
+func (s *Server) handleResourcesRead(ctx context.Context, enc *json.Encoder, msg rpcMsg) {
+	var p resourceReadParams
+	if err := json.Unmarshal(msg.Params, &p); err != nil {
+		s.replyErr(enc, msg.ID, -32602, "invalid params: "+err.Error())
+		return
+	}
+	res := lookupResource(p.URI)
+	if res == nil {
+		s.replyErr(enc, msg.ID, -32602, fmt.Sprintf("unknown resource %q", p.URI))
+		return
+	}
+	resp, err := s.bridge.Call(ctx, domain.Request{Action: res.Action, Payload: cloneMap(res.Payload)})
+	if err != nil {
+		s.reply(enc, msg.ID, errorContent(err))
+		return
+	}
+	b, _ := json.Marshal(resp.Result)
+	s.reply(enc, msg.ID, map[string]any{
+		"contents": []map[string]any{{"uri": res.URI, "mimeType": "application/json", "text": string(b)}},
+	})
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func (s *Server) handleToolsCall(ctx context.Context, enc *json.Encoder, msg rpcMsg) {

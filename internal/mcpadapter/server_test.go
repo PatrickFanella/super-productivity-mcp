@@ -55,14 +55,22 @@ func TestInitializeAdvertisesMCPVersion(t *testing.T) {
 	if v, _ := result["protocolVersion"].(string); v != "2024-11-05" {
 		t.Fatalf("protocolVersion %v", result["protocolVersion"])
 	}
+	capabilities := result["capabilities"].(map[string]any)
+	if _, ok := capabilities["resources"]; !ok {
+		t.Fatalf("expected resources capability, got %#v", capabilities)
+	}
 }
 
 func TestToolsListIsCatalogDriven(t *testing.T) {
 	s := newServer(t, &stubBridge{})
 	reply := runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	tools := reply["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 18 {
-		t.Fatalf("expected 18 tools, got %d", len(tools))
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	if len(tools) != len(cat.MCPTools()) {
+		t.Fatalf("expected %d tools, got %d", len(cat.MCPTools()), len(tools))
 	}
 }
 
@@ -100,5 +108,49 @@ func TestToolsCallUnknownTool(t *testing.T) {
 	result := reply["result"].(map[string]any)
 	if result["isError"] != true {
 		t.Fatalf("expected isError=true")
+	}
+}
+
+func TestResourcesListExposesSuperProductivityResources(t *testing.T) {
+	s := newServer(t, &stubBridge{})
+	reply := runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/list"}`)
+	resources := reply["result"].(map[string]any)["resources"].([]any)
+	uris := make(map[string]bool)
+	for _, raw := range resources {
+		res := raw.(map[string]any)
+		uris[res["uri"].(string)] = true
+	}
+	for _, uri := range []string{"sp://projects", "sp://tags", "sp://tasks/today", "sp://tasks/overdue"} {
+		if !uris[uri] {
+			t.Fatalf("missing resource %s in %#v", uri, resources)
+		}
+	}
+}
+
+func TestResourcesReadDispatchesToBridge(t *testing.T) {
+	br := &stubBridge{resp: domain.Response{Result: map[string]any{"tasks": []any{map[string]any{"id": "t1"}}}}}
+	s := newServer(t, br)
+	reply := runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"sp://tasks/overdue"}}`)
+	if br.lastReq.Action != "task.list" {
+		t.Fatalf("dispatched action %q", br.lastReq.Action)
+	}
+	if br.lastReq.Payload["overdue"] != true || br.lastReq.Payload["includeDone"] != false {
+		t.Fatalf("unexpected payload %#v", br.lastReq.Payload)
+	}
+	contents := reply["result"].(map[string]any)["contents"].([]any)
+	content := contents[0].(map[string]any)
+	if content["uri"] != "sp://tasks/overdue" || content["mimeType"] != "application/json" {
+		t.Fatalf("unexpected content metadata %#v", content)
+	}
+	if !strings.Contains(content["text"].(string), `"t1"`) {
+		t.Fatalf("unexpected content text %q", content["text"])
+	}
+}
+
+func TestResourcesReadRejectsUnknownURI(t *testing.T) {
+	s := newServer(t, &stubBridge{})
+	reply := runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"sp://missing"}}`)
+	if reply["error"] == nil {
+		t.Fatalf("expected JSON-RPC error, got %#v", reply)
 	}
 }

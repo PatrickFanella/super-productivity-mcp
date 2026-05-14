@@ -12,7 +12,8 @@ test-go:
 	go test ./...
 
 test-js:
-	node --test plugin/bridge/**/*.test.js
+	node --check quickadd-popup/popup.js
+	node --test plugin/**/*.test.js plugin/bridge/**/*.test.js
 
 test-e2e:
 	go test ./test/e2e -v
@@ -23,6 +24,8 @@ sync-catalogs:
 	cp internal/catalog/tools.json plugin/bridge/tool-catalog.json
 	cp internal/catalog/tools.json skill/super-productivity-mcp/data/tool-catalog.json
 
-# CI-safe drift check: run the sync, then fail if anything moved.
-check-catalogs: sync-catalogs
-	git diff --exit-code -- plugin/bridge/tool-catalog.json skill/super-productivity-mcp/data/tool-catalog.json
+# CI-safe drift check: fail if synced copies differ from the canonical catalog.
+# Keep this read-only so local uncommitted synced copies can still pass.
+check-catalogs:
+	cmp -s internal/catalog/tools.json plugin/bridge/tool-catalog.json
+	cmp -s internal/catalog/tools.json skill/super-productivity-mcp/data/tool-catalog.json

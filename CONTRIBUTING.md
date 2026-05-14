@@ -10,6 +10,8 @@ Thank you for your interest in contributing! Here's everything you need to get s
 git clone https://github.com/PatrickFanella/super-productivity-mcp.git
 cd super-productivity-mcp
 go build -o sp-mcp ./cmd/sp-mcp
+go build -o sp-quick-add ./cmd/sp-quick-add
+node --check quickadd-popup/popup.js
 ```
 
 ## Running tests
@@ -17,7 +19,7 @@ go build -o sp-mcp ./cmd/sp-mcp
 ```bash
 make test           # full suite: catalog check + Go + JS + E2E
 go test ./...       # Go unit tests
-node --test plugin/bridge/**/*.test.js  # JS bridge tests
+node --test plugin/**/*.test.js plugin/bridge/**/*.test.js  # JS bridge/plugin tests
 go test ./test/e2e -v                   # E2E tests
 ```
 

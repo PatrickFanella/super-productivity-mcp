@@ -19,6 +19,8 @@ module.exports = {
     return { shown: true, type };
   },
   "bridge.health": async () => ({ ok: true, message: "bridge alive" }),
+  "bridge.checkConnection": async () => ({ ok: true, message: "bridge alive" }),
+  "bridge.debugDirectories": async () => ({ ok: true, dirs: global.mcpBridgeDirs || {} }),
   "bridge.capabilities": async () => ({
     supportedActions: catalog.tools.map((t) => t.action),
     pluginVersion: "0.1.0",

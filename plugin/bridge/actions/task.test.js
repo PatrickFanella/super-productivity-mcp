@@ -3,6 +3,322 @@ const assert = require("node:assert/strict");
 
 const taskActions = require("./task");
 
+function localDateStr(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+test("task.create parses tag, project, due date, and estimate short syntax", async () => {
+  let received;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  global.PluginAPI = {
+    getAllTags: async () => [{ id: "tag-1", title: "shopping" }],
+    getAllProjects: async () => [{ id: "proj-1", title: "Work" }],
+    addTask: async (data) => {
+      received = data;
+      return "task-1";
+    },
+  };
+
+  const out = await taskActions["task.create"]({ title: "Buy milk #shopping +wor @tomorrow 30m" });
+
+  assert.deepEqual(out, { taskId: "task-1" });
+  assert.equal(received.title, "Buy milk");
+  assert.deepEqual(received.tagIds, ["tag-1"]);
+  assert.equal(received.projectId, "proj-1");
+  assert.equal(received.dueDay, localDateStr(tomorrow));
+  assert.equal(received.timeEstimate, 30 * 60 * 1000);
+});
+
+test("task.create parses spent/estimate syntax and preserves explicit ids", async () => {
+  let received;
+  global.PluginAPI = {
+    getAllTags: async () => [{ id: "tag-1", title: "shopping" }],
+    getAllProjects: async () => [{ id: "proj-1", title: "Work" }],
+    addTask: async (data) => {
+      received = data;
+      return "task-1";
+    },
+  };
+
+  await taskActions["task.create"]({
+    title: "Research #shopping +work 1h/2h",
+    projectId: "explicit-project",
+    tagIds: ["explicit-tag"],
+  });
+
+  assert.equal(received.title, "Research");
+  assert.equal(received.projectId, "explicit-project");
+  assert.deepEqual(received.tagIds, ["explicit-tag", "tag-1"]);
+  assert.equal(received.timeSpent, 60 * 60 * 1000);
+  assert.equal(received.timeEstimate, 2 * 60 * 60 * 1000);
+});
+
+test("task.createWithSubtasks creates parent then child tasks", async () => {
+  const calls = [];
+  global.PluginAPI = {
+    getAllTags: async () => [{ id: "tag-1", title: "launch" }],
+    getAllProjects: async () => [{ id: "proj-1", title: "Work" }],
+    addTask: async (data) => {
+      calls.push(data);
+      return calls.length === 1 ? "parent-1" : `child-${calls.length - 1}`;
+    },
+  };
+
+  const out = await taskActions["task.createWithSubtasks"]({
+    title: "Launch blog #launch +wor 2h",
+    notes: "parent notes",
+    subtasks: [
+      { title: "Draft copy 30m", notes: "child notes" },
+      { title: "Publish" },
+    ],
+  });
+
+  assert.deepEqual(out, { parentId: "parent-1", subtaskIds: ["child-1", "child-2"] });
+  assert.equal(calls[0].title, "Launch blog");
+  assert.equal(calls[0].projectId, "proj-1");
+  assert.deepEqual(calls[0].tagIds, ["tag-1"]);
+  assert.equal(calls[0].timeEstimate, 2 * 60 * 60 * 1000);
+  assert.deepEqual(calls.slice(1).map((call) => call.parentId), ["parent-1", "parent-1"]);
+  assert.equal(calls[1].title, "Draft copy");
+  assert.equal(calls[1].notes, "child notes");
+  assert.equal(calls[1].timeEstimate, 30 * 60 * 1000);
+});
+
+test("task.start starts requested task and stops existing tracked task", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "old", title: "Old", currentTimestamp: 123, isDone: false },
+      { id: "new", title: "New", currentTimestamp: null, isDone: false },
+    ],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const out = await taskActions["task.start"]({ taskId: "new" });
+
+  assert.deepEqual(out, { started: true });
+  assert.equal(updates[0].taskId, "old");
+  assert.deepEqual(updates[0].data, { currentTimestamp: null });
+  assert.equal(updates[1].taskId, "new");
+  assert.equal(typeof updates[1].data.currentTimestamp, "number");
+});
+
+test("task.start rejects completed tasks", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "done", title: "Done", isDone: true }],
+  };
+
+  await assert.rejects(taskActions["task.start"]({ taskId: "done" }), (err) => err.code === "TASK_DONE");
+});
+
+test("task.stop clears current timestamp and is idempotent", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "active", currentTimestamp: 123, isDone: false }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const out = await taskActions["task.stop"]({});
+
+  assert.deepEqual(out, { stopped: true });
+  assert.deepEqual(updates, [{ taskId: "active", data: { currentTimestamp: null } }]);
+
+  global.PluginAPI = { getTasks: async () => [] };
+  assert.deepEqual(await taskActions["task.stop"]({}), { stopped: false });
+});
+
+test("task.current returns currently tracked task summary", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "idle", currentTimestamp: null },
+      { id: "active", title: "Active", currentTimestamp: 123, isDone: false, projectId: "p1", parentId: null, tagIds: ["t1"], dueDay: "2026-05-13" },
+    ],
+  };
+
+  const out = await taskActions["task.current"]({});
+
+  assert.deepEqual(out.task, {
+    id: "active",
+    title: "Active",
+    isDone: false,
+    projectId: "p1",
+    parentId: null,
+    tagIds: ["t1"],
+    dueDay: "2026-05-13",
+  });
+
+  global.PluginAPI = { getTasks: async () => [] };
+  assert.deepEqual(await taskActions["task.current"]({}), { task: null });
+});
+
+test("task.bulkComplete completes existing tasks with partial results", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "a" }, { id: "b" }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const out = await taskActions["task.bulkComplete"]({ taskIds: ["a", "missing", "b"] });
+
+  assert.deepEqual(out.results.map((r) => ({ id: r.id, success: r.success })), [
+    { id: "a", success: true },
+    { id: "missing", success: false },
+    { id: "b", success: true },
+  ]);
+  assert.deepEqual(updates.map((u) => u.taskId), ["a", "b"]);
+  assert.equal(updates[0].data.isDone, true);
+  assert.equal(typeof updates[0].data.doneOn, "number");
+});
+
+test("task.bulkUpdate maps snake case fields and reports partial failure", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    updateTask: async (taskId, data) => {
+      if (taskId === "bad") throw new Error("nope");
+      updates.push({ taskId, data });
+    },
+  };
+
+  const out = await taskActions["task.bulkUpdate"]({
+    updates: [
+      { task_id: "a", due_day: "2026-05-14", planned_at: null, time_estimate: 60000, tag_ids: ["t1"] },
+      { task_id: "bad", title: "Break" },
+    ],
+  });
+
+  assert.deepEqual(updates, [{ taskId: "a", data: { dueDay: "2026-05-14", plannedAt: null, timeEstimate: 60000, tagIds: ["t1"] } }]);
+  assert.deepEqual(out.results.map((r) => ({ id: r.id, success: r.success })), [
+    { id: "a", success: true },
+    { id: "bad", success: false },
+  ]);
+});
+
+test("task.planToday plans and unplans tasks via plannedAt", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const planned = await taskActions["task.planToday"]({ taskIds: ["a", "b"] });
+  assert.deepEqual(planned.results.map((r) => ({ id: r.id, success: r.success })), [
+    { id: "a", success: true },
+    { id: "b", success: true },
+  ]);
+  assert.equal(typeof updates[0].data.plannedAt, "number");
+
+  updates.length = 0;
+  await taskActions["task.planToday"]({ task_ids: ["a"], unplan: true });
+  assert.deepEqual(updates, [{ taskId: "a", data: { plannedAt: null } }]);
+});
+
+test("task.addTag adds tag without replacing existing tags", async () => {
+  let received;
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1", tagIds: ["existing"] }],
+    updateTask: async (taskId, data) => {
+      received = { taskId, data };
+    },
+  };
+
+  assert.deepEqual(await taskActions["task.addTag"]({ task_id: "task-1", tag_id: "new" }), { added: true });
+  assert.deepEqual(received, { taskId: "task-1", data: { tagIds: ["existing", "new"] } });
+
+  received = undefined;
+  assert.deepEqual(await taskActions["task.addTag"]({ taskId: "task-1", tagId: "existing" }), { added: false });
+  assert.equal(received, undefined);
+});
+
+test("task.removeTag removes existing tag and errors when absent", async () => {
+  let received;
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1", tagIds: ["keep", "drop"] }],
+    updateTask: async (taskId, data) => {
+      received = { taskId, data };
+    },
+  };
+
+  assert.deepEqual(await taskActions["task.removeTag"]({ taskId: "task-1", tagId: "drop" }), { removed: true });
+  assert.deepEqual(received, { taskId: "task-1", data: { tagIds: ["keep"] } });
+
+  await assert.rejects(taskActions["task.removeTag"]({ taskId: "task-1", tagId: "absent" }), (err) => err.code === "TAG_NOT_ON_TASK");
+});
+
+test("task.moveToProject moves top-level task and rejects subtasks", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "top", projectId: "old", parentId: null },
+      { id: "child", projectId: "old", parentId: "parent" },
+    ],
+    getAllProjects: async () => [{ id: "new" }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  assert.deepEqual(await taskActions["task.moveToProject"]({ task_id: "top", project_id: "new" }), { moved: true });
+  assert.deepEqual(updates, [{ taskId: "top", data: { projectId: "new" } }]);
+
+  await assert.rejects(taskActions["task.moveToProject"]({ taskId: "child", projectId: "new" }), (err) => err.code === "TASK_IS_SUBTASK");
+  await assert.rejects(taskActions["task.moveToProject"]({ taskId: "top", projectId: "missing" }), (err) => err.code === "PROJECT_NOT_FOUND");
+});
+
+test("task.delete deletes existing task and errors when missing", async () => {
+  const deleted = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1" }],
+    deleteTask: async (taskId) => deleted.push(taskId),
+  };
+
+  assert.deepEqual(await taskActions["task.delete"]({ task_id: "task-1" }), { deleted: true });
+  assert.deepEqual(deleted, ["task-1"]);
+
+  await assert.rejects(taskActions["task.delete"]({ taskId: "missing" }), (err) => err.code === "TASK_NOT_FOUND");
+});
+
+test("task.delete reports unsupported runtime when delete API is absent", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1" }],
+  };
+
+  await assert.rejects(taskActions["task.delete"]({ taskId: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
+});
+
+test("task.reorder supports snake aliases, parent context, and validation", async () => {
+  const calls = [];
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "a", parentId: "parent-1", projectId: "proj-1", tagIds: ["tag-1"] },
+      { id: "b", parentId: "parent-1", projectId: "proj-1", tagIds: ["tag-1"] },
+      { id: "wrong", parentId: "other", projectId: "proj-1", tagIds: [] },
+    ],
+    reorderTasks: async (taskIds, contextId, contextType) => calls.push({ taskIds, contextId, contextType }),
+  };
+
+  assert.deepEqual(await taskActions["task.reorder"]({ task_ids: ["b", "a"], context_id: "parent-1", context_type: "parent" }), { reordered: true });
+  assert.deepEqual(calls, [{ taskIds: ["b", "a"], contextId: "parent-1", contextType: "task" }]);
+
+  assert.deepEqual(await taskActions["task.reorderTasks"]({ taskIds: ["a", "b"], contextId: "tag-1", contextType: "tag" }), { reordered: true });
+  await assert.rejects(taskActions["task.reorder"]({ taskIds: ["wrong"], contextId: "parent-1", contextType: "parent" }), (err) => err.code === "TASK_CONTEXT_MISMATCH");
+});
+
+test("task.worklog summarizes tracked time within a date range", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "a", title: "A", projectId: "p1", tagIds: ["t1"], timeSpentOnDay: { "2026-05-12": 60000, "2026-05-13": 120000 } },
+      { id: "b", title: "B", projectId: "p2", tagIds: [], timeSpentOnDay: [{ date: "2026-05-13", timeSpent: 30000 }] },
+      { id: "c", title: "C", timeSpentOnDay: { "2026-05-14": 999 } },
+    ],
+  };
+
+  const out = await taskActions["task.worklog"]({ start_date: "2026-05-13", end_date: "2026-05-13" });
+
+  assert.equal(out.totalMs, 150000);
+  assert.deepEqual(out.entries, [
+    { date: "2026-05-13", taskId: "a", title: "A", projectId: "p1", tagIds: ["t1"], timeMs: 120000 },
+    { date: "2026-05-13", taskId: "b", title: "B", projectId: "p2", tagIds: [], timeMs: 30000 },
+  ]);
+});
+
 test("task.list includeDone=false filters completed tasks", async () => {
   global.PluginAPI = {
     getTasks: async () => [
@@ -13,6 +329,100 @@ test("task.list includeDone=false filters completed tasks", async () => {
   const out = await taskActions["task.list"]({ includeDone: false });
   assert.equal(out.tasks.length, 1);
   assert.equal(out.tasks[0].id, "1");
+});
+
+test("task.list supports overdue and planned-for-today filters", async () => {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  const plannedAt = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "overdue", isDone: false, dueDay: yesterdayStr },
+      { id: "today", isDone: false, dueDay: todayStr, plannedAt },
+      { id: "done-overdue", isDone: true, dueDay: yesterdayStr },
+    ],
+  };
+
+  const overdue = await taskActions["task.list"]({ includeDone: false, overdue: true });
+  assert.deepEqual(overdue.tasks.map((t) => t.id), ["overdue"]);
+
+  const planned = await taskActions["task.list"]({ includeDone: false, plannedForToday: true });
+  assert.deepEqual(planned.tasks.map((t) => t.id), ["today"]);
+});
+
+test("task.list supports parity filters and search", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      {
+        id: "match",
+        title: "Launch blog",
+        notes: "write announcement",
+        projectId: "proj-1",
+        tagIds: ["tag-1"],
+        isDone: false,
+        isArchived: false,
+        parentId: null,
+      },
+      {
+        id: "wrong-project",
+        title: "Launch side quest",
+        notes: "write announcement",
+        projectId: "proj-2",
+        tagIds: ["tag-1"],
+        isDone: false,
+        isArchived: false,
+        parentId: null,
+      },
+      {
+        id: "child",
+        title: "Launch child",
+        notes: "write announcement",
+        projectId: "proj-1",
+        tagIds: ["tag-1"],
+        isDone: false,
+        isArchived: false,
+        parentId: "match",
+      },
+    ],
+  };
+
+  const out = await taskActions["task.list"]({
+    projectId: "proj-1",
+    tagId: "tag-1",
+    isDone: false,
+    isArchived: false,
+    search: "announcement",
+    parents_only: true,
+  });
+
+  assert.deepEqual(out.tasks.map((t) => t.id), ["match"]);
+});
+
+test("task.list supports recurring-only and field selection", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "rec", title: "Recurring", repeatCfgId: "repeat-1", notes: "keep", tagIds: ["tag-1"] },
+      { id: "plain", title: "Plain", notes: "drop", tagIds: ["tag-1"] },
+    ],
+  };
+
+  const out = await taskActions["task.list"]({ recurring_only: true, fields: ["id", "title"] });
+
+  assert.deepEqual(out.tasks, [{ id: "rec", title: "Recurring" }]);
+});
+
+test("task.update forwards dueDay and plannedAt", async () => {
+  let received;
+  global.PluginAPI = {
+    updateTask: async (_id, updates) => {
+      received = updates;
+    },
+  };
+
+  await taskActions["task.update"]({ taskId: "1", dueDay: "2026-05-13", plannedAt: 1778630400000 });
+  assert.deepEqual(received, { dueDay: "2026-05-13", plannedAt: 1778630400000 });
 });
 
 test("task.get throws typed TASK_NOT_FOUND", async () => {

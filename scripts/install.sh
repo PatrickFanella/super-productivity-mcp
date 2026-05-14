@@ -7,11 +7,12 @@
 #   scripts/install.sh                # default: ~/.local install
 #   PREFIX=/opt/sp scripts/install.sh # override install prefix
 #   SKIP_SKILL=1 scripts/install.sh   # skip skill install
-#   SKIP_BUILD=1 scripts/install.sh   # use existing ./sp-mcp
+#   SKIP_BUILD=1 scripts/install.sh   # use existing ./sp-mcp and ./sp-quick-add
 #
 # Honored env vars:
 #   PREFIX          (default: $HOME/.local)
 #   BIN_DIR         (default: $PREFIX/bin)
+#   SHARE_DIR       (default: $PREFIX/share/super-productivity-mcp)
 #   DATA_DIR        (default: $XDG_DATA_HOME/super-productivity-mcp or
 #                    $HOME/.local/share/super-productivity-mcp)
 #   SKILLS_DIR      (default: first existing of ~/.agents/skills,
@@ -25,6 +26,7 @@ cd "$ROOT_DIR"
 
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${BIN_DIR:-$PREFIX/bin}"
+SHARE_DIR="${SHARE_DIR:-$PREFIX/share/super-productivity-mcp}"
 
 if [[ -z "${DATA_DIR:-}" ]]; then
   if [[ -n "${XDG_DATA_HOME:-}" ]]; then
@@ -48,20 +50,32 @@ log()  { printf "\033[1;34m==>\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m!!\033[0m  %s\n" "$*" >&2; }
 fail() { printf "\033[1;31mxx\033[0m  %s\n" "$*" >&2; exit 1; }
 
-# 1. Build the binary.
+# 1. Build the binaries.
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   command -v go >/dev/null 2>&1 || fail "go is required to build sp-mcp"
   log "Building sp-mcp"
   go build -o "$ROOT_DIR/sp-mcp" ./cmd/sp-mcp
+
+  log "Building sp-quick-add"
+  go build -o "$ROOT_DIR/sp-quick-add" ./cmd/sp-quick-add
 else
   [[ -x "$ROOT_DIR/sp-mcp" ]] || fail "SKIP_BUILD set but $ROOT_DIR/sp-mcp is missing"
-  log "Skipping build (using existing sp-mcp)"
+  [[ -x "$ROOT_DIR/sp-quick-add" ]] || fail "SKIP_BUILD set but $ROOT_DIR/sp-quick-add is missing"
+  log "Skipping build (using existing sp-mcp and sp-quick-add)"
 fi
 
-# 2. Install the binary.
+# 2. Install the binaries.
 log "Installing binary to $BIN_DIR/sp-mcp"
 mkdir -p "$BIN_DIR"
 install -m 0755 "$ROOT_DIR/sp-mcp" "$BIN_DIR/sp-mcp"
+
+log "Installing binary to $BIN_DIR/sp-quick-add"
+install -m 0755 "$ROOT_DIR/sp-quick-add" "$BIN_DIR/sp-quick-add"
+
+log "Installing quick-add popup assets to $SHARE_DIR/quickadd-popup"
+mkdir -p "$SHARE_DIR/quickadd-popup"
+install -m 0755 "$ROOT_DIR/quickadd-popup/popup.js" "$SHARE_DIR/quickadd-popup/popup.js"
+install -m 0644 "$ROOT_DIR/quickadd-popup/style.css" "$SHARE_DIR/quickadd-popup/style.css"
 
 # 3. Create the IPC data directory.
 if [[ -z "${SKIP_DATA_DIR:-}" ]]; then
@@ -105,6 +119,8 @@ cat <<EOF
 ${GREEN}Install complete.${RESET}
 
   binary:   $BIN_DIR/sp-mcp
+  quick add: $BIN_DIR/sp-quick-add
+  popup:    $SHARE_DIR/quickadd-popup
   data dir: $DATA_DIR
   skill:    ${SKILL_DEST:-<skipped>}
   plugin:   $PLUGIN_ZIP
@@ -134,5 +150,10 @@ ${BOLD}Super Productivity plugin${RESET}
 
 ${BOLD}Verify${RESET}
   $BIN_DIR/sp-mcp --version 2>/dev/null || echo "(no --version flag yet; smoke-test via your MCP client)"
+  $BIN_DIR/sp-quick-add --dry-run --title "Smoke quick add @today"
+
+${BOLD}Omarchy / Hyprland quick add${RESET}
+  Add this to ~/.config/hypr/bindings.conf:
+    bindd = SUPER SHIFT, T, Super Productivity quick add, exec, uwsm-app -- $BIN_DIR/sp-quick-add
 
 EOF

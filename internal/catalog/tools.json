@@ -156,6 +156,18 @@
       }
     },
     {
+      "mcpName": "restore_task",
+      "action": "task.restore",
+      "description": "Restore an archived task through the optional local REST API",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" }
+        }
+      }
+    },
+    {
       "mcpName": "delete_task",
       "action": "task.delete",
       "description": "Delete a task permanently when the Super Productivity plugin runtime supports deleteTask",

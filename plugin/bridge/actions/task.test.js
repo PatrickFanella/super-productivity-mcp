@@ -425,6 +425,63 @@ test("task.archive uses configured local REST archive endpoint", async () => {
   global.fetch = oldFetch;
 });
 
+test("task.restore requires and uses configured local REST endpoint", async () => {
+  const oldUrl = process.env.SP_LOCAL_REST_URL;
+  const oldFetch = global.fetch;
+  delete process.env.SP_LOCAL_REST_URL;
+  delete process.env.SUPER_PRODUCTIVITY_REST_URL;
+
+  await assert.rejects(taskActions["task.restore"]({ task_id: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
+
+  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3219/api/";
+  let received;
+  global.fetch = async (url, options) => {
+    received = { url, options };
+    return { ok: true, status: 200, text: async () => "" };
+  };
+
+  assert.deepEqual(await taskActions["task.restore"]({ taskId: "task-1" }), { restored: true, via: "localRest" });
+  assert.equal(received.url, "http://127.0.0.1:3219/api/tasks/task-1/restore");
+  assert.equal(received.options.method, "POST");
+
+  if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
+  else process.env.SP_LOCAL_REST_URL = oldUrl;
+  global.fetch = oldFetch;
+});
+
+test("task start/stop/current prefer configured local REST", async () => {
+  const oldUrl = process.env.SP_LOCAL_REST_URL;
+  const oldFetch = global.fetch;
+  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3219";
+  const calls = [];
+  global.PluginAPI = {
+    getTasks: async () => {
+      throw new Error("Plugin fallback should not be used");
+    },
+  };
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url, method: options.method || "GET" });
+    return {
+      ok: true,
+      status: 200,
+      text: async () => (url.endsWith("/task-control/current") ? JSON.stringify({ task: { id: "active", title: "Active" } }) : ""),
+    };
+  };
+
+  assert.deepEqual(await taskActions["task.start"]({ task_id: "task-1" }), { started: true, via: "localRest" });
+  assert.deepEqual(await taskActions["task.stop"]({}), { stopped: true, via: "localRest" });
+  assert.deepEqual(await taskActions["task.current"]({}), { task: { id: "active", title: "Active" }, via: "localRest" });
+  assert.deepEqual(calls, [
+    { url: "http://127.0.0.1:3219/tasks/task-1/start", method: "POST" },
+    { url: "http://127.0.0.1:3219/task-control/stop", method: "POST" },
+    { url: "http://127.0.0.1:3219/task-control/current", method: "GET" },
+  ]);
+
+  if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
+  else process.env.SP_LOCAL_REST_URL = oldUrl;
+  global.fetch = oldFetch;
+});
+
 test("task.reorder supports snake aliases, parent context, and validation", async () => {
   const calls = [];
   global.PluginAPI = {

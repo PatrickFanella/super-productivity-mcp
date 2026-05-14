@@ -175,6 +175,7 @@ Popup asset lookup order:
 | `complete_task` | Mark a task as done |
 | `uncomplete_task` | Unmark a task as done |
 | `archive_task` | Archive a task via optional local REST API; can explicitly fall back to marking done |
+| `restore_task` | Restore an archived task through the optional local REST API |
 | `delete_task` | Delete a task permanently when the Super Productivity plugin runtime supports `deleteTask` |
 | `add_time_to_task` | Add tracked time (milliseconds) |
 | `start_task` | Start time tracking on a task, stopping any other active task first |

@@ -473,6 +473,11 @@
     await PluginAPI.deleteTask(taskId);
     return { deleted: true };
   }
+  async function taskRestore(payload) {
+    const taskId = valueOf(payload || {}, 'taskId', 'task_id');
+    if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
+    throw typedError('UNSUPPORTED_ACTION', 'Restore requires the modular bridge with SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL.', false);
+  }
   async function taskReorder(payload) {
     if (typeof PluginAPI.reorderTasks !== 'function') return { reordered: false, note: 'reorderTasks not supported by this plugin runtime' };
     const taskIds = valueOf(payload || {}, 'taskIds', 'task_ids') || [];
@@ -826,6 +831,7 @@
     'task.complete': taskComplete,
     'task.uncomplete': taskUncomplete,
     'task.archive': taskArchive,
+    'task.restore': taskRestore,
     'task.delete': taskDelete,
     'task.addTime': taskAddTime,
     'task.reorder': taskReorder,

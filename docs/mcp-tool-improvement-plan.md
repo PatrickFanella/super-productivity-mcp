@@ -13,6 +13,7 @@ Phase 1 has shipped the safety-first schedule primitives:
 - `archive_task` no longer silently marks done. True archive is available through optional local REST config (`SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`); marking done requires explicit `allowDoneFallback:true`.
 - `get_tasks` can read `source: "active" | "archived" | "all"` when `PluginAPI.getArchivedTasks()` is available. `includeDone` remains backward-compatible and defaults to true.
 - Wave 2 shipped query visibility: `get_schedule_range`, `find_stale_schedule`, `find_unscheduled_active_tasks`, and `get_tasks` shaping with limit/offset/sort plus optional synthetic fields (`noteLength`, `subtaskCount`, `isRecurring`, `parentTitle`, `projectTitle`).
+- Wave 3 shipped local REST parity for `restore_task` plus Local REST-backed `start_task`, `stop_task`, and `get_current_task` when configured. Plugin mutation fallback remains for timer tools when REST is not configured.
 
 Next phases should focus on richer query shaping, auto-scheduling, note hygiene, and API coverage beyond tasks.
 
@@ -246,9 +247,9 @@ These three remove most friction from safe, whole-app schedule cleanup.
 - Extended `get_tasks` with optional limit/offset/sort and synthetic fields: project title, parent title, subtask count, note length, generated recurring marker.
 - Add schedule resources such as `sp://schedule/today` and `sp://schedule/health` once the response shapes stabilize.
 
-### Phase 3: true API parity
+### Phase 3: true API parity (partially shipped)
 
-- Add `restore_task` through the local REST `/tasks/:id/restore` route.
+- Added `restore_task` through the local REST `/tasks/:id/restore` route.
 - Prefer local REST task start/stop/current endpoints when configured, falling back to plugin mutation only when unavailable.
 - Expose archived task reads explicitly when `PluginAPI.getArchivedTasks()` exists.
 - Add project batch-update coverage if a real workflow needs it.

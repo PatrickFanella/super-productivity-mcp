@@ -321,7 +321,7 @@ async function taskArchive(payload) {
 
   const localRest = localRestConfig();
   if (localRest) {
-    await archiveTaskViaLocalRest(taskId, localRest);
+    await localRestRequest(localRest, `/tasks/${encodeURIComponent(taskId)}/archive`, { method: "POST", errorCode: "LOCAL_REST_ARCHIVE_FAILED" });
     return { archived: true, via: "localRest" };
   }
 
@@ -347,19 +347,30 @@ function localRestConfig() {
   };
 }
 
-async function archiveTaskViaLocalRest(taskId, config) {
+async function localRestRequest(config, path, options = {}) {
   if (typeof fetch !== "function") {
-    throw typedError("UNSUPPORTED_ACTION", "Local REST archive requires a runtime with fetch support", false);
+    throw typedError("UNSUPPORTED_ACTION", "Local REST support requires a runtime with fetch support", false);
   }
   const headers = {};
   if (config.token) headers.Authorization = `Bearer ${config.token}`;
-  const response = await fetch(`${config.baseUrl}/tasks/${encodeURIComponent(taskId)}/archive`, {
-    method: "POST",
+  const response = await fetch(`${config.baseUrl}${path}`, {
+    method: options.method || "GET",
     headers,
   });
   if (!response.ok) {
     const body = await safeResponseText(response);
-    throw typedError("LOCAL_REST_ARCHIVE_FAILED", `Local REST archive failed (${response.status}): ${body || response.statusText}`, false, { status: response.status });
+    throw typedError(options.errorCode || "LOCAL_REST_FAILED", `Local REST request failed (${response.status}): ${body || response.statusText}`, false, { status: response.status });
+  }
+  return parseRestResponse(response);
+}
+
+async function parseRestResponse(response) {
+  const body = await safeResponseText(response);
+  if (!body) return null;
+  try {
+    return JSON.parse(body);
+  } catch (_err) {
+    return body;
   }
 }
 
@@ -381,6 +392,17 @@ async function taskDelete(payload) {
   }
   await PluginAPI.deleteTask(taskId);
   return { deleted: true };
+}
+
+async function taskRestore(payload) {
+  const taskId = valueOf(payload || {}, "taskId", "task_id");
+  if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
+  const localRest = localRestConfig();
+  if (!localRest) {
+    throw typedError("UNSUPPORTED_ACTION", "Restore requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL", false);
+  }
+  await localRestRequest(localRest, `/tasks/${encodeURIComponent(taskId)}/restore`, { method: "POST", errorCode: "LOCAL_REST_RESTORE_FAILED" });
+  return { restored: true, via: "localRest" };
 }
 
 async function taskAddTime(payload) {
@@ -425,6 +447,11 @@ async function validateReorderContext(taskIds, contextId, contextType) {
 async function taskStart(payload) {
   const taskId = valueOf(payload || {}, "taskId", "task_id");
   if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
+  const localRest = localRestConfig();
+  if (localRest) {
+    await localRestRequest(localRest, `/tasks/${encodeURIComponent(taskId)}/start`, { method: "POST", errorCode: "LOCAL_REST_START_FAILED" });
+    return { started: true, via: "localRest" };
+  }
   const tasks = await PluginAPI.getTasks();
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
@@ -436,6 +463,11 @@ async function taskStart(payload) {
 }
 
 async function taskStop() {
+  const localRest = localRestConfig();
+  if (localRest) {
+    await localRestRequest(localRest, "/task-control/stop", { method: "POST", errorCode: "LOCAL_REST_STOP_FAILED" });
+    return { stopped: true, via: "localRest" };
+  }
   const tasks = await PluginAPI.getTasks();
   const active = tasks.find((t) => t.currentTimestamp > 0);
   if (!active) return { stopped: false };
@@ -444,6 +476,11 @@ async function taskStop() {
 }
 
 async function taskCurrent() {
+  const localRest = localRestConfig();
+  if (localRest) {
+    const body = await localRestRequest(localRest, "/task-control/current", { errorCode: "LOCAL_REST_CURRENT_FAILED" });
+    return { task: normalizeCurrentTaskResponse(body), via: "localRest" };
+  }
   const tasks = await PluginAPI.getTasks();
   const active = tasks.find((t) => t.currentTimestamp > 0);
   if (!active) return { task: null };
@@ -458,6 +495,14 @@ async function taskCurrent() {
       dueDay: active.dueDay,
     },
   };
+}
+
+function normalizeCurrentTaskResponse(body) {
+  if (!body) return null;
+  if (body.task !== undefined) return body.task;
+  if (body.currentTask !== undefined) return body.currentTask;
+  if (body.id || body.title) return body;
+  return null;
 }
 
 async function taskBulkComplete(payload) {
@@ -811,6 +856,7 @@ module.exports = {
   "task.complete": taskComplete,
   "task.uncomplete": taskUncomplete,
   "task.archive": taskArchive,
+  "task.restore": taskRestore,
   "task.delete": taskDelete,
   "task.addTime": taskAddTime,
   "task.reorder": taskReorder,

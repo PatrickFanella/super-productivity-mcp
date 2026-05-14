@@ -2,6 +2,19 @@
 
 Context: this plan comes from a full-app schedule cleanup session where the MCP was used to clear today, reschedule all active top-level tasks, fix stale planned dates, add estimates/due dates, and compact oversized roadmap notes.
 
+## Implementation status
+
+Phase 1 has shipped the safety-first schedule primitives:
+
+- `bulk_update_tasks` accepts `dryRun` / `dry_run` and returns task-level field diffs before mutation.
+- `bulk_reschedule_tasks` limits writes to `plannedAt`, `dueDay`, and `timeEstimate`.
+- `clear_schedule_for_day` clears tasks planned on a local date, with optional due-date clearing and dry-run preview.
+- `get_schedule_health` returns cleanup counts plus compact task lists for planned-today, overdue, stale, unscheduled, missing-estimate, oversized-note, recurring, and suspicious-date/estimate buckets.
+- `archive_task` no longer silently marks done. True archive is available through optional local REST config (`SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`); marking done requires explicit `allowDoneFallback:true`.
+- `get_tasks` can read `source: "active" | "archived" | "all"` when `PluginAPI.getArchivedTasks()` is available. `includeDone` remains backward-compatible and defaults to true.
+
+Next phases should focus on richer query shaping, auto-scheduling, note hygiene, and API coverage beyond tasks.
+
 ## Top priorities
 
 ### 1. `clear_schedule_for_day(date)`
@@ -222,3 +235,36 @@ Ship these first:
 - `bulk_reschedule_tasks({ updates, dryRun })`
 
 These three remove most friction from safe, whole-app schedule cleanup.
+
+## Expanded implementation plan
+
+### Phase 2: query and schedule visibility
+
+- Add `get_schedule_range({ startDate, endDate })` grouped by local date and ordered by `plannedAt`.
+- Add focused discovery tools for stale scheduled tasks and unscheduled active top-level tasks.
+- Extend `get_tasks` with optional limit/offset/sort and synthetic fields: project title, parent title, subtask count, note length, generated recurring marker.
+- Add schedule resources such as `sp://schedule/today` and `sp://schedule/health` once the response shapes stabilize.
+
+### Phase 3: true API parity
+
+- Add `restore_task` through the local REST `/tasks/:id/restore` route.
+- Prefer local REST task start/stop/current endpoints when configured, falling back to plugin mutation only when unavailable.
+- Expose archived task reads explicitly when `PluginAPI.getArchivedTasks()` exists.
+- Add project batch-update coverage if a real workflow needs it.
+
+### Phase 4: planning automation
+
+- Add `make_planned_at` for local date/time conversion. Keep timezone support explicit; avoid silent UTC/local conversions.
+- Add `auto_schedule_tasks` as a dry-run-first workflow tool that uses capacity, max tasks/day, stale/overdue priority, and preserve-existing-plan rules.
+- Require dry-run by default for broad schedule rewrites unless `confirmApply:true` is supplied.
+
+### Phase 5: note and roadmap hygiene
+
+- Add a safe `compact_task_notes` tool that requires caller-supplied replacement notes and returns old/new sizes.
+- Avoid LLM summarization inside the plugin bridge. The MCP client should generate the compacted note, then this server should apply it with preview and rollback metadata.
+
+### Phase 6: catalog and evaluation hardening
+
+- Add tool-level examples to catalog descriptions where schemas are ambiguous.
+- Add read-only eval prompts covering schedule cleanup, archive support, and task discovery.
+- Keep `internal/catalog/tools.json` as SSOT and enforce `make check-catalogs` in CI.

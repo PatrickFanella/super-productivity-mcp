@@ -47,6 +47,7 @@
           "planned_for_today": { "type": "boolean" },
           "recurringOnly": { "type": "boolean" },
           "recurring_only": { "type": "boolean" },
+          "source": { "type": "string", "enum": ["active", "archived", "all"] },
           "fields": { "type": "array", "items": { "type": "string" } }
         }
       }
@@ -135,11 +136,15 @@
     {
       "mcpName": "archive_task",
       "action": "task.archive",
-      "description": "Archive a task",
+      "description": "Archive a task using the optional local REST API; explicit fallback can mark done when true archive is unavailable",
       "inputSchema": {
         "type": "object",
-        "properties": { "taskId": { "type": "string" } },
-        "required": ["taskId"]
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "allowDoneFallback": { "type": "boolean" },
+          "allow_done_fallback": { "type": "boolean" }
+        }
       }
     },
     {
@@ -249,7 +254,76 @@
                 "project_id": { "type": "string" }
               }
             }
-          }
+          },
+          "dryRun": { "type": "boolean" },
+          "dry_run": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "mcpName": "bulk_reschedule_tasks",
+      "action": "task.bulkReschedule",
+      "description": "Update only schedule fields for multiple tasks with dry-run diff support",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "updates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": { "type": "string" },
+                "task_id": { "type": "string" },
+                "dueDay": { "type": ["string", "null"] },
+                "due_day": { "type": ["string", "null"] },
+                "plannedAt": { "type": ["integer", "null"] },
+                "planned_at": { "type": ["integer", "null"] },
+                "timeEstimate": { "type": "integer", "minimum": 0 },
+                "time_estimate": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
+          "dryRun": { "type": "boolean" },
+          "dry_run": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "mcpName": "clear_schedule_for_day",
+      "action": "task.clearScheduleForDay",
+      "description": "Clear plannedAt for tasks planned on a local date, optionally clearing matching dueDay values",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "dryRun": { "type": "boolean" },
+          "dry_run": { "type": "boolean" },
+          "clearDueDay": { "type": "boolean" },
+          "clear_due_day": { "type": "boolean" },
+          "includeDone": { "type": "boolean" },
+          "include_done": { "type": "boolean" },
+          "includeArchived": { "type": "boolean" },
+          "include_archived": { "type": "boolean" }
+        },
+        "required": ["date"]
+      }
+    },
+    {
+      "mcpName": "get_schedule_health",
+      "action": "task.scheduleHealth",
+      "description": "Summarize schedule hygiene counts and concise task lists for cleanup planning",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "staleBeforeDate": { "type": "string" },
+          "stale_before_date": { "type": "string" },
+          "oversizedNotesThreshold": { "type": "integer", "minimum": 0 },
+          "oversized_notes_threshold": { "type": "integer", "minimum": 0 },
+          "includeDone": { "type": "boolean" },
+          "include_done": { "type": "boolean" },
+          "includeArchived": { "type": "boolean" },
+          "include_archived": { "type": "boolean" }
         }
       }
     },

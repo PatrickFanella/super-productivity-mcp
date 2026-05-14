@@ -120,6 +120,8 @@ OpenCode example:
 | `SP_MCP_LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 | `SP_MCP_TIMEOUT` | `30s` | Per-request timeout (e.g. `10s`, `60s`) |
 | `SP_MCP_RETRIES` | `3` | Number of retries on transient bridge errors |
+| `SP_LOCAL_REST_URL` / `SUPER_PRODUCTIVITY_REST_URL` | unset | Optional Super Productivity local REST base URL used for true archive operations |
+| `SP_LOCAL_REST_TOKEN` | unset | Optional bearer token for the local REST API |
 
 The plugin inside Super Productivity must be configured to use the **same** `SP_MCP_DATA_DIR`.
 
@@ -166,13 +168,13 @@ Popup asset lookup order:
 | MCP tool | What it does |
 |----------|-------------|
 | `create_task` | Create a new task in Super Productivity. Supports short syntax in title: `#tag`, `+project`, `@due`, estimates like `30m` or `1h/2h`. |
-| `get_tasks` | List tasks from Super Productivity |
+| `get_tasks` | List tasks from Super Productivity; supports active/archived/all sources when archived tasks API is available |
 | `create_task_with_subtasks` | Create a parent task and subtasks in one operation. Supports short syntax in parent and subtask titles. |
 | `get_task` | Get a specific task by ID |
 | `update_task` | Update task fields |
 | `complete_task` | Mark a task as done |
 | `uncomplete_task` | Unmark a task as done |
-| `archive_task` | Archive a task |
+| `archive_task` | Archive a task via optional local REST API; can explicitly fall back to marking done |
 | `delete_task` | Delete a task permanently when the Super Productivity plugin runtime supports `deleteTask` |
 | `add_time_to_task` | Add tracked time (milliseconds) |
 | `start_task` | Start time tracking on a task, stopping any other active task first |
@@ -180,7 +182,10 @@ Popup asset lookup order:
 | `get_current_task` | Get the currently tracked task, or null when no timer is running |
 | `get_worklog` | Summarize tracked task time for a date range |
 | `bulk_complete_tasks` | Mark multiple tasks complete with per-task partial success results |
-| `bulk_update_tasks` | Update multiple tasks with per-task partial success results |
+| `bulk_update_tasks` | Update multiple tasks with per-task partial success results and optional dry-run diffs |
+| `bulk_reschedule_tasks` | Update only schedule fields (`plannedAt`, `dueDay`, `timeEstimate`) for multiple tasks with dry-run diffs |
+| `clear_schedule_for_day` | Clear `plannedAt` for tasks planned on a local date, optionally clearing matching `dueDay` values |
+| `get_schedule_health` | Summarize schedule hygiene counts and concise task lists for cleanup planning |
 | `plan_tasks_for_today` | Plan or unplan multiple tasks for today using `plannedAt` |
 | `add_tag_to_task` | Add one tag to a task without replacing existing tags; idempotent if already present |
 | `remove_tag_from_task` | Remove one tag from a task without replacing other tags; errors if absent |

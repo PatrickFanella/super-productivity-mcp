@@ -335,7 +335,7 @@
 
   async function taskList(payload) {
     payload = payload || {};
-    let tasks = await PluginAPI.getTasks();
+    let tasks = await getTasksBySource(payload.source || 'active');
     if (payload.includeDone === false) tasks = tasks.filter((t) => !t.isDone);
     const projectId = valueOf(payload, 'projectId', 'project_id');
     if (projectId) tasks = tasks.filter((t) => t.projectId === projectId);
@@ -363,6 +363,15 @@
     const fields = Array.isArray(payload.fields) ? payload.fields : [];
     if (fields.length > 0) tasks = tasks.map((task) => pickFields(task, fields));
     return { tasks };
+  }
+
+  async function getTasksBySource(source) {
+    const normalized = ['active', 'archived', 'all'].includes(source) ? source : 'active';
+    const active = (await PluginAPI.getTasks()).map((task) => Object.assign({ isArchived: false }, task, { isArchived: task.isArchived == null ? false : task.isArchived }));
+    if (normalized === 'active') return active;
+    if (typeof PluginAPI.getArchivedTasks !== 'function') return normalized === 'archived' ? [] : active;
+    const archived = (await PluginAPI.getArchivedTasks()).map((task) => Object.assign({}, task, { isArchived: true }));
+    return normalized === 'archived' ? archived : active.concat(archived);
   }
 
   function valueOf(obj, camelName, snakeName) {
@@ -398,7 +407,17 @@
 
   async function taskComplete(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: true, doneOn: Date.now() }); return { completed: true }; }
   async function taskUncomplete(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: false, doneOn: null }); return { uncompleted: true }; }
-  async function taskArchive(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: true, doneOn: Date.now() }); return { archived: false, note: 'Plugin API has no explicit archive endpoint; marked done' }; }
+  async function taskArchive(payload) {
+    const taskId = valueOf(payload || {}, 'taskId', 'task_id');
+    if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
+    const task = await findTask(taskId);
+    if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+    if (valueOf(payload || {}, 'allowDoneFallback', 'allow_done_fallback') === true) {
+      await PluginAPI.updateTask(taskId, { isDone: true, doneOn: Date.now() });
+      return { archived: false, note: 'True archive unavailable in browser plugin; explicit allowDoneFallback marked task done instead' };
+    }
+    throw typedError('UNSUPPORTED_ACTION', 'True archive requires the modular bridge with SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL. Pass allowDoneFallback:true only if marking done is acceptable.', false);
+  }
   async function taskAddTime(payload) {
     const task = await findTask(payload.taskId);
     if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + payload.taskId + ' not found', false);
@@ -481,14 +500,116 @@
   }
 
   async function taskBulkUpdate(payload) {
+    return taskBulkUpdateCore(payload || {}, null);
+  }
+
+  async function taskBulkUpdateCore(payload, allowedFields) {
     const updates = (payload && payload.updates) || [];
+    const dryRun = valueOf(payload || {}, 'dryRun', 'dry_run') === true;
+    const existingTasks = dryRun || allowedFields ? await getTasksBySource('all') : [];
     const results = [];
     for (const item of updates) {
       const taskId = valueOf(item, 'taskId', 'task_id');
-      try { await PluginAPI.updateTask(taskId, mapTaskUpdate(item)); results.push({ id: taskId, success: true }); }
+      try {
+        if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
+        const fullPatch = mapTaskUpdate(item);
+        const patch = pickAllowedPatch(fullPatch, allowedFields);
+        if (Object.keys(patch).length === 0) throw typedError('NO_UPDATE_FIELDS', allowedFields ? 'No allowed fields provided: ' + allowedFields.join(', ') : 'No update fields provided', false);
+        const task = existingTasks.find((t) => t.id === taskId) || null;
+        if ((dryRun || allowedFields) && !task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+        const result = { id: taskId, success: true };
+        const changes = diffTaskPatch(task, patch);
+        if (changes.length) result.changes = changes;
+        const ignoredFields = ignoredPatchFields(fullPatch, patch);
+        if (ignoredFields.length) result.ignoredFields = ignoredFields;
+        if (!dryRun) await PluginAPI.updateTask(taskId, patch);
+        results.push(result);
+      }
       catch (err) { results.push({ id: taskId, success: false, error: err.message || String(err) }); }
     }
-    return { results };
+    return { dryRun, results };
+  }
+
+  function pickAllowedPatch(patch, allowedFields) {
+    if (!allowedFields) return patch;
+    const allowed = new Set(allowedFields);
+    return Object.fromEntries(Object.entries(patch).filter((pair) => allowed.has(pair[0])));
+  }
+  function ignoredPatchFields(fullPatch, patch) {
+    const included = new Set(Object.keys(patch));
+    return Object.keys(fullPatch).filter((field) => !included.has(field));
+  }
+  function diffTaskPatch(task, patch) {
+    return Object.entries(patch).map((pair) => ({ field: pair[0], before: task ? task[pair[0]] : undefined, after: pair[1] }));
+  }
+  async function taskBulkReschedule(payload) { return taskBulkUpdateCore(payload || {}, ['plannedAt', 'dueDay', 'timeEstimate']); }
+
+  async function taskClearScheduleForDay(payload) {
+    payload = payload || {};
+    const date = payload.date;
+    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be YYYY-MM-DD', false);
+    const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
+    const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
+    const clearDueDay = valueOf(payload, 'clearDueDay', 'clear_due_day') === true;
+    const range = dayRangeMs(date);
+    const tasks = await getTasksBySource(includeArchived ? 'all' : 'active');
+    const updates = [];
+    for (const task of tasks) {
+      if (!includeDone && task.isDone) continue;
+      if (!includeArchived && task.isArchived) continue;
+      const patch = {};
+      if (task.plannedAt != null && task.plannedAt >= range[0] && task.plannedAt < range[1]) patch.plannedAt = null;
+      if (clearDueDay && task.dueDay === date) patch.dueDay = null;
+      if (Object.keys(patch).length > 0) updates.push(Object.assign({ taskId: task.id }, patch));
+    }
+    const out = await taskBulkUpdateCore(Object.assign({}, payload, { updates }), ['plannedAt', 'dueDay']);
+    return Object.assign({}, out, { date, changedCount: out.results.filter((result) => result.success).length });
+  }
+
+  async function taskScheduleHealth(payload) {
+    payload = payload || {};
+    const date = payload.date || localDateStr(new Date());
+    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be YYYY-MM-DD', false);
+    const staleBeforeDate = valueOf(payload, 'staleBeforeDate', 'stale_before_date') || date;
+    if (!isLocalDateString(staleBeforeDate)) throw typedError('INVALID_REQUEST', 'staleBeforeDate must be YYYY-MM-DD', false);
+    const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
+    const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
+    const oversizedNotesThreshold = Number(valueOf(payload, 'oversizedNotesThreshold', 'oversized_notes_threshold') == null ? 4000 : valueOf(payload, 'oversizedNotesThreshold', 'oversized_notes_threshold'));
+    const range = dayRangeMs(date);
+    const staleRange = dayRangeMs(staleBeforeDate);
+    const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active')).filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived));
+    const lists = {
+      plannedToday: tasks.filter((task) => task.plannedAt != null && task.plannedAt >= range[0] && task.plannedAt < range[1]),
+      overdue: tasks.filter((task) => task.dueDay != null && task.dueDay < date),
+      unscheduledActiveTopLevel: tasks.filter((task) => !task.parentId && !task.plannedAt && !task.dueDay),
+      stalePlanned: tasks.filter((task) => task.plannedAt != null && task.plannedAt < staleRange[0]),
+      staleDue: tasks.filter((task) => task.dueDay != null && task.dueDay < staleBeforeDate),
+      missingEstimate: tasks.filter((task) => !Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) <= 0),
+      oversizedNotes: tasks.filter((task) => String(task.notes || '').length > oversizedNotesThreshold),
+      recurringGenerated: tasks.filter((task) => !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle)),
+      suspiciousDatesOrEstimates: tasks.filter(hasSuspiciousDatesOrEstimates),
+    };
+    const compactLists = Object.fromEntries(Object.entries(lists).map((pair) => [pair[0], pair[1].map(compactTaskSummary)]));
+    const counts = Object.fromEntries(Object.entries(compactLists).map((pair) => [pair[0], pair[1].length]));
+    return { date, staleBeforeDate, counts, tasks: compactLists };
+  }
+
+  function compactTaskSummary(task) {
+    return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, plannedAt: task.plannedAt, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
+  }
+  function hasSuspiciousDatesOrEstimates(task) {
+    const tenYears = Date.now() + 10 * 365 * 86400000;
+    const oneYearMs = 365 * 86400000;
+    if (task.dueDay != null && !isLocalDateString(task.dueDay)) return true;
+    if (task.plannedAt != null && (!Number.isFinite(Number(task.plannedAt)) || Number(task.plannedAt) < 0 || Number(task.plannedAt) > tenYears)) return true;
+    if (task.timeEstimate != null && (!Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) < 0 || Number(task.timeEstimate) > oneYearMs)) return true;
+    return false;
+  }
+  function isLocalDateString(value) { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value); }
+  function dayRangeMs(dateStr) {
+    const parts = dateStr.split('-').map(Number);
+    const start = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+    return [start, start + 86400000];
   }
 
   async function taskPlanToday(payload) {
@@ -602,6 +723,9 @@
     'task.current': taskCurrent,
     'task.bulkComplete': taskBulkComplete,
     'task.bulkUpdate': taskBulkUpdate,
+    'task.bulkReschedule': taskBulkReschedule,
+    'task.clearScheduleForDay': taskClearScheduleForDay,
+    'task.scheduleHealth': taskScheduleHealth,
     'task.planToday': taskPlanToday,
     'task.addTag': taskAddTag,
     'task.removeTag': taskRemoveTag,

@@ -194,6 +194,102 @@ test("task.bulkUpdate maps snake case fields and reports partial failure", async
   ]);
 });
 
+test("task.bulkUpdate dry-run reports diffs without mutating", async () => {
+  let mutated = false;
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "a", title: "A", plannedAt: 1000, dueDay: "2026-05-13" }],
+    updateTask: async () => {
+      mutated = true;
+    },
+  };
+
+  const out = await taskActions["task.bulkUpdate"]({
+    dryRun: true,
+    updates: [{ taskId: "a", plannedAt: 2000, dueDay: null }],
+  });
+
+  assert.equal(out.dryRun, true);
+  assert.equal(mutated, false);
+  assert.deepEqual(out.results[0].changes, [
+    { field: "dueDay", before: "2026-05-13", after: null },
+    { field: "plannedAt", before: 1000, after: 2000 },
+  ]);
+
+  const missing = await taskActions["task.bulkUpdate"]({ dryRun: true, updates: [{ taskId: "missing", plannedAt: 3000 }] });
+  assert.equal(missing.results[0].success, false);
+  assert.match(missing.results[0].error, /not found/);
+});
+
+test("task.bulkReschedule only updates schedule fields", async () => {
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "a", title: "A" }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const out = await taskActions["task.bulkReschedule"]({
+    updates: [
+      { task_id: "a", title: "ignored", planned_at: 123, time_estimate: 60000 },
+      { task_id: "b", title: "no schedule field" },
+    ],
+  });
+
+  assert.deepEqual(updates, [{ taskId: "a", data: { plannedAt: 123, timeEstimate: 60000 } }]);
+  assert.equal(out.results[0].success, true);
+  assert.deepEqual(out.results[0].ignoredFields, ["title"]);
+  assert.equal(out.results[1].success, false);
+});
+
+test("task.clearScheduleForDay supports dry-run and updates", async () => {
+  const plannedAt = new Date(2026, 4, 14, 9).getTime();
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "planned", title: "Planned", plannedAt, dueDay: "2026-05-14", isDone: false },
+      { id: "done", title: "Done", plannedAt, dueDay: "2026-05-14", isDone: true },
+      { id: "other-day", title: "Other", plannedAt: new Date(2026, 4, 15).getTime(), isDone: false },
+    ],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  const dry = await taskActions["task.clearScheduleForDay"]({ date: "2026-05-14", clear_due_day: true, dry_run: true });
+  assert.equal(dry.dryRun, true);
+  assert.equal(dry.changedCount, 1);
+  assert.deepEqual(updates, []);
+
+  const changed = await taskActions["task.clearScheduleForDay"]({ date: "2026-05-14", clearDueDay: true });
+  assert.equal(changed.changedCount, 1);
+  assert.deepEqual(updates, [{ taskId: "planned", data: { plannedAt: null, dueDay: null } }]);
+});
+
+test("task.scheduleHealth returns cleanup counts and concise lists", async () => {
+  const plannedAt = new Date(2026, 4, 14, 8).getTime();
+  const stalePlanned = new Date(2026, 4, 1).getTime();
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "planned", title: "Planned", plannedAt, dueDay: "2026-05-14", timeEstimate: 60000, notes: "ok" },
+      { id: "overdue", title: "Overdue", dueDay: "2026-05-13", timeEstimate: 0, notes: "x".repeat(20) },
+      { id: "unscheduled", title: "Unscheduled", parentId: null, timeEstimate: 60000 },
+      { id: "child", title: "Child", parentId: "unscheduled", timeEstimate: 60000 },
+      { id: "stale", title: "Stale", plannedAt: stalePlanned, dueDay: "2026-05-01", timeEstimate: 60000, repeatCfgId: "r1" },
+      { id: "bad", title: "Bad", dueDay: "not-a-date", timeEstimate: 400 * 86400000 },
+    ],
+  };
+
+  const out = await taskActions["task.scheduleHealth"]({ date: "2026-05-14", stale_before_date: "2026-05-10", oversized_notes_threshold: 10 });
+
+  assert.equal(out.counts.plannedToday, 1);
+  assert.equal(out.counts.overdue, 2);
+  assert.equal(out.counts.unscheduledActiveTopLevel, 1);
+  assert.equal(out.counts.stalePlanned, 1);
+  assert.equal(out.counts.staleDue, 1);
+  assert.equal(out.counts.missingEstimate, 1);
+  assert.equal(out.counts.oversizedNotes, 1);
+  assert.equal(out.counts.recurringGenerated, 1);
+  assert.equal(out.counts.suspiciousDatesOrEstimates, 1);
+  assert.deepEqual(out.tasks.plannedToday[0].id, "planned");
+});
+
 test("task.planToday plans and unplans tasks via plannedAt", async () => {
   const updates = [];
   global.PluginAPI = {
@@ -281,6 +377,52 @@ test("task.delete reports unsupported runtime when delete API is absent", async 
   };
 
   await assert.rejects(taskActions["task.delete"]({ taskId: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
+});
+
+test("task.archive errors unless true archive or explicit fallback is available", async () => {
+  const oldUrl = process.env.SP_LOCAL_REST_URL;
+  delete process.env.SP_LOCAL_REST_URL;
+  delete process.env.SUPER_PRODUCTIVITY_REST_URL;
+  const updates = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1" }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+
+  await assert.rejects(taskActions["task.archive"]({ taskId: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
+
+  const out = await taskActions["task.archive"]({ task_id: "task-1", allow_done_fallback: true });
+  assert.equal(out.archived, false);
+  assert.equal(updates[0].taskId, "task-1");
+  assert.equal(updates[0].data.isDone, true);
+
+  if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
+  else process.env.SP_LOCAL_REST_URL = oldUrl;
+});
+
+test("task.archive uses configured local REST archive endpoint", async () => {
+  const oldUrl = process.env.SP_LOCAL_REST_URL;
+  const oldToken = process.env.SP_LOCAL_REST_TOKEN;
+  const oldFetch = global.fetch;
+  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3219/api";
+  process.env.SP_LOCAL_REST_TOKEN = "token-1";
+  let received;
+  global.PluginAPI = { getTasks: async () => [{ id: "task-1" }] };
+  global.fetch = async (url, options) => {
+    received = { url, options };
+    return { ok: true, status: 200, text: async () => "" };
+  };
+
+  assert.deepEqual(await taskActions["task.archive"]({ taskId: "task-1" }), { archived: true, via: "localRest" });
+  assert.equal(received.url, "http://127.0.0.1:3219/api/tasks/task-1/archive");
+  assert.equal(received.options.method, "POST");
+  assert.equal(received.options.headers.Authorization, "Bearer token-1");
+
+  if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
+  else process.env.SP_LOCAL_REST_URL = oldUrl;
+  if (oldToken === undefined) delete process.env.SP_LOCAL_REST_TOKEN;
+  else process.env.SP_LOCAL_REST_TOKEN = oldToken;
+  global.fetch = oldFetch;
 });
 
 test("task.reorder supports snake aliases, parent context, and validation", async () => {

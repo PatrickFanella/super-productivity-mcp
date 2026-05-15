@@ -144,7 +144,7 @@
     {
       "mcpName": "archive_task",
       "action": "task.archive",
-      "description": "Archive a task using the optional local REST API; explicit fallback can mark done when true archive is unavailable",
+      "description": "True-archive a task via optional Local REST. Requires SP_LOCAL_REST_URL/SUPER_PRODUCTIVITY_REST_URL; without REST this errors unless allowDoneFallback:true explicitly accepts marking the task done instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -158,7 +158,7 @@
     {
       "mcpName": "restore_task",
       "action": "task.restore",
-      "description": "Restore an archived task through the optional local REST API",
+      "description": "Restore an archived task through the optional Local REST API. Requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL; no plugin fallback exists.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -245,7 +245,7 @@
     {
       "mcpName": "bulk_update_tasks",
       "action": "task.bulkUpdate",
-      "description": "Update multiple tasks with per-task partial success results",
+      "description": "Update multiple tasks with per-task partial success results. Use dryRun:true to preview field diffs without mutation before broad edits.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -275,15 +275,15 @@
               }
             }
           },
-          "dryRun": { "type": "boolean" },
-          "dry_run": { "type": "boolean" }
+          "dryRun": { "type": "boolean", "description": "When true, return diffs and do not call updateTask." },
+          "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." }
         }
       }
     },
     {
       "mcpName": "bulk_reschedule_tasks",
       "action": "task.bulkReschedule",
-      "description": "Update only schedule fields for multiple tasks with dry-run diff support",
+      "description": "Update only schedule fields (plannedAt, dueDay, timeEstimate) for multiple tasks. Prefer dryRun:true first for schedule-wide changes.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -303,22 +303,22 @@
               }
             }
           },
-          "dryRun": { "type": "boolean" },
-          "dry_run": { "type": "boolean" }
+          "dryRun": { "type": "boolean", "description": "When true, return schedule diffs and do not mutate tasks." },
+          "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." }
         }
       }
     },
     {
       "mcpName": "clear_schedule_for_day",
       "action": "task.clearScheduleForDay",
-      "description": "Clear plannedAt for tasks planned on a local date, optionally clearing matching dueDay values",
+      "description": "Clear plannedAt for tasks planned on a local YYYY-MM-DD, optionally clearing matching dueDay values. Use dryRun:true to preview changed tasks first.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "date": { "type": "string" },
-          "dryRun": { "type": "boolean" },
-          "dry_run": { "type": "boolean" },
-          "clearDueDay": { "type": "boolean" },
+          "date": { "type": "string", "description": "Local date in YYYY-MM-DD format, for example 2026-05-14." },
+          "dryRun": { "type": "boolean", "description": "When true, return changed task diffs and do not mutate tasks." },
+          "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." },
+          "clearDueDay": { "type": "boolean", "description": "Also clear dueDay when it exactly equals date." },
           "clear_due_day": { "type": "boolean" },
           "includeDone": { "type": "boolean" },
           "include_done": { "type": "boolean" },
@@ -426,7 +426,7 @@
     {
       "mcpName": "auto_schedule_tasks",
       "action": "task.autoSchedule",
-      "description": "Dry-run-first scheduler for unscheduled active tasks using daily capacity",
+      "description": "Dry-run-first scheduler for unscheduled active tasks using daily capacity. Applying schedules requires dryRun:false and confirmApply:true.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -441,10 +441,10 @@
           "default_estimate_minutes": { "type": "integer", "minimum": 1 },
           "workStart": { "type": "string" },
           "work_start": { "type": "string" },
-          "dryRun": { "type": "boolean" },
-          "dry_run": { "type": "boolean" },
-          "confirmApply": { "type": "boolean" },
-          "confirm_apply": { "type": "boolean" },
+          "dryRun": { "type": "boolean", "description": "Defaults to true. Set false only when applying with confirmApply:true." },
+          "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." },
+          "confirmApply": { "type": "boolean", "description": "Must be true with dryRun:false to mutate plannedAt values." },
+          "confirm_apply": { "type": "boolean", "description": "Snake-case alias for confirmApply." },
           "includeProjectIds": { "type": "array", "items": { "type": "string" } },
           "excludeProjectIds": { "type": "array", "items": { "type": "string" } },
           "rules": { "type": "object" }
@@ -454,18 +454,18 @@
     {
       "mcpName": "compact_task_notes",
       "action": "task.compactNotes",
-      "description": "Replace oversized task notes with caller-provided compact notes using dry-run-first size diffs",
+      "description": "Replace oversized task notes with caller-provided replacementNotes. Defaults to dry-run; applying requires dryRun:false and confirmApply:true.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": { "type": "string" },
           "task_id": { "type": "string" },
-          "replacementNotes": { "type": "string" },
-          "replacement_notes": { "type": "string" },
-          "dryRun": { "type": "boolean" },
-          "dry_run": { "type": "boolean" },
-          "confirmApply": { "type": "boolean" },
-          "confirm_apply": { "type": "boolean" }
+          "replacementNotes": { "type": "string", "description": "The complete replacement note text generated by the caller; the bridge does not summarize notes." },
+          "replacement_notes": { "type": "string", "description": "Snake-case alias for replacementNotes." },
+          "dryRun": { "type": "boolean", "description": "Defaults to true. Returns old/new note sizes without mutation." },
+          "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." },
+          "confirmApply": { "type": "boolean", "description": "Must be true with dryRun:false to replace notes." },
+          "confirm_apply": { "type": "boolean", "description": "Snake-case alias for confirmApply." }
         }
       }
     },

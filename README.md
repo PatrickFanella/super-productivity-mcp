@@ -213,6 +213,11 @@ Popup asset lookup order:
 
 The full schema for each tool lives in [`internal/catalog/tools.json`](internal/catalog/tools.json).
 
+Safety notes:
+
+- Broad schedule and note writes are dry-run-first where possible. Use `dryRun:false` plus `confirmApply:true` only after inspecting returned diffs.
+- True archive/restore uses the optional Local REST API. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied, and `restore_task` is unavailable.
+
 ## Available resources
 
 | MCP resource | What it returns |

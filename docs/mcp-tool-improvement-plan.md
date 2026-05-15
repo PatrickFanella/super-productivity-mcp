@@ -18,6 +18,7 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 5 shipped `compact_task_notes`, a dry-run-first note replacement tool that requires caller-provided replacement notes and reports old/new note sizes before applying.
 - Wave 6 shipped schedule-focused MCP resources: `sp://tasks/unscheduled`, `sp://schedule/today`, and `sp://schedule/health`.
 - Wave 7 added read-only MCP eval scenario specs in `docs/evals/mcp-schedule-evals.xml` for schedule cleanup, discovery, dry-run, archive/restore, and resource use.
+- Wave 8 clarified high-risk tool catalog descriptions, especially dry-run/confirm-apply and Local REST fallback semantics.
 
 Next phases should focus on evals and polish.
 
@@ -272,5 +273,5 @@ These three remove most friction from safe, whole-app schedule cleanup.
 
 - Added schedule-focused resources for common read-only inspection workflows.
 - Added read-only eval prompts covering schedule cleanup, archive support, and task discovery.
-- Add tool-level examples to catalog descriptions where schemas are ambiguous.
+- Added safety and example guidance to ambiguous/high-risk catalog descriptions.
 - Keep `internal/catalog/tools.json` as SSOT and enforce `make check-catalogs` in CI.

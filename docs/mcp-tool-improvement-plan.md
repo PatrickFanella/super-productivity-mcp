@@ -19,6 +19,7 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 6 shipped schedule-focused MCP resources: `sp://tasks/unscheduled`, `sp://schedule/today`, and `sp://schedule/health`.
 - Wave 7 added read-only MCP eval scenario specs in `docs/evals/mcp-schedule-evals.xml` for schedule cleanup, discovery, dry-run, archive/restore, and resource use.
 - Wave 8 clarified high-risk tool catalog descriptions, especially dry-run/confirm-apply and Local REST fallback semantics.
+- Wave 9 documented the plugin bridge source-of-truth decision in `docs/adr/0001-plugin-bridge-source-of-truth.md`.
 
 Next phases should focus on evals and polish.
 

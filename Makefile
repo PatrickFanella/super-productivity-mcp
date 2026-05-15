@@ -1,6 +1,6 @@
-.PHONY: test test-go test-js test-e2e sync-catalogs check-catalogs install package-plugin
+.PHONY: test test-go test-js test-e2e test-evals sync-catalogs check-catalogs install package-plugin
 
-test: check-catalogs test-go test-js test-e2e
+test: check-catalogs test-go test-js test-e2e test-evals
 
 install:
 	bash scripts/install.sh
@@ -17,6 +17,9 @@ test-js:
 
 test-e2e:
 	go test ./test/e2e -v
+
+test-evals:
+	node scripts/check-evals.js
 
 # Copy the canonical Go-side catalog to its synced JS- and skill-side
 # locations. The Go file is the SSOT; never edit the copies directly.

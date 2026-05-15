@@ -1,4 +1,17 @@
 const { typedError } = require("../errors");
+const localRest = require("../adapters/local-rest");
+const { parseTaskShortSyntax } = require("./task-short-syntax");
+const {
+  compactTaskSummary,
+  dayRangeMs,
+  hasSuspiciousDatesOrEstimates,
+  isLocalDateString,
+  localDateStr,
+  pickFields,
+  sortAndPageTasks,
+  valueOf,
+  withSyntheticTaskFields,
+} = require("./task-shape");
 
 async function findTask(taskId) {
   const tasks = await PluginAPI.getTasks();
@@ -42,115 +55,6 @@ async function taskCreateWithSubtasks(payload) {
   return { parentId, subtaskIds };
 }
 
-
-async function parseTaskShortSyntax(title) {
-  const parsed = { title: title || "", tagIds: [] };
-  const remove = [];
-
-  for (const match of title.matchAll(/#([\p{L}\p{N}_-]+)/gu)) {
-    const tag = await findTagByTitle(match[1]);
-    if (tag?.id) parsed.tagIds.push(tag.id);
-    remove.push(match[0]);
-  }
-
-  for (const match of title.matchAll(/\+([\p{L}\p{N}_-]{3,})/gu)) {
-    const project = await findProjectByPrefix(match[1]);
-    if (project?.id && !parsed.projectId) parsed.projectId = project.id;
-    remove.push(match[0]);
-  }
-
-  const due = parseDueSyntax(title);
-  if (due) {
-    parsed.dueDay = due.dueDay;
-    if (due.dueWithTime != null) parsed.dueWithTime = due.dueWithTime;
-    remove.push(due.token);
-    if (due.timeToken) remove.push(due.timeToken);
-  }
-
-  const estimate = parseTimeSyntax(title);
-  if (estimate) {
-    if (estimate.timeSpent != null) parsed.timeSpent = estimate.timeSpent;
-    if (estimate.timeEstimate != null) parsed.timeEstimate = estimate.timeEstimate;
-    remove.push(estimate.token);
-  }
-
-  parsed.title = stripTokens(title, remove) || title;
-  return parsed;
-}
-
-async function findTagByTitle(title) {
-  if (typeof PluginAPI.getAllTags !== "function") return null;
-  const tags = await PluginAPI.getAllTags();
-  const needle = title.toLowerCase();
-  return tags.find((tag) => String(tag.title || tag.name || "").toLowerCase() === needle) || null;
-}
-
-async function findProjectByPrefix(prefix) {
-  if (typeof PluginAPI.getAllProjects !== "function") return null;
-  const projects = await PluginAPI.getAllProjects();
-  const needle = prefix.toLowerCase();
-  return projects.find((project) => String(project.title || project.name || "").toLowerCase().startsWith(needle)) || null;
-}
-
-function parseDueSyntax(title) {
-  const match = title.match(/@(today|tomorrow|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)(?:\s+((?:[01]?\d|2[0-3]):[0-5]\d\s*(?:am|pm)?|(?:1[0-2]|0?\d)\s*(?:am|pm)))?/i);
-  if (!match) return null;
-  const date = resolveDueDate(match[1]);
-  const out = { token: match[0], dueDay: localDateStr(date), timeToken: match[2] };
-  const time = parseClockTime(match[2]);
-  if (time) out.dueWithTime = new Date(date.getFullYear(), date.getMonth(), date.getDate(), time.hour, time.minute).getTime();
-  return out;
-}
-
-function resolveDueDate(word) {
-  const normalized = word.toLowerCase().slice(0, 3);
-  const date = new Date();
-  if (normalized === "tom") {
-    date.setDate(date.getDate() + 1);
-    return date;
-  }
-  if (normalized === "tod") return date;
-  const weekdays = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-  if (weekdays[normalized] !== undefined) {
-    let diff = weekdays[normalized] - date.getDay();
-    if (diff <= 0) diff += 7;
-    date.setDate(date.getDate() + diff);
-  }
-  return date;
-}
-
-function parseClockTime(raw) {
-  if (!raw) return null;
-  const match = String(raw).trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
-  if (!match) return null;
-  let hour = Number(match[1]);
-  const minute = Number(match[2] || 0);
-  const meridian = match[3]?.toLowerCase();
-  if (meridian === "pm" && hour < 12) hour += 12;
-  if (meridian === "am" && hour === 12) hour = 0;
-  return { hour, minute };
-}
-
-function parseTimeSyntax(title) {
-  const match = title.match(/\b(\d+(?:\.\d+)?)([hm])(?:\/(\d+(?:\.\d+)?)([hm]))?\b/i);
-  if (!match) return null;
-  const first = durationMs(match[1], match[2]);
-  const second = match[3] ? durationMs(match[3], match[4]) : null;
-  return second == null ? { token: match[0], timeEstimate: first } : { token: match[0], timeSpent: first, timeEstimate: second };
-}
-
-function durationMs(amount, unit) {
-  const multiplier = unit.toLowerCase() === "h" ? 60 * 60 * 1000 : 60 * 1000;
-  return Math.round(Number(amount) * multiplier);
-}
-
-function stripTokens(title, tokens) {
-  let out = title;
-  for (const token of tokens.filter(Boolean).sort((a, b) => b.length - a.length)) {
-    out = out.replace(token, " ");
-  }
-  return out.replace(/\s+/g, " ").trim();
-}
 
 function mergeUnique(first, second) {
   return [...new Set([...(first || []), ...(second || [])])];
@@ -235,44 +139,6 @@ async function taskCurrentContextList(payload) {
   return { tasks };
 }
 
-async function withSyntheticTaskFields(tasks) {
-  const byId = new Map(tasks.map((task) => [task.id, task]));
-  const projects = typeof PluginAPI.getAllProjects === "function" ? await PluginAPI.getAllProjects() : [];
-  const projectById = new Map(projects.map((project) => [project.id, project]));
-  return tasks.map((task) => ({
-    ...task,
-    noteLength: String(task.notes || "").length,
-    subtaskCount: Array.isArray(task.subTaskIds) ? task.subTaskIds.length : tasks.filter((candidate) => candidate.parentId === task.id).length,
-    isRecurring: !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle),
-    parentTitle: task.parentId ? byId.get(task.parentId)?.title : undefined,
-    projectTitle: task.projectId ? projectById.get(task.projectId)?.title || projectById.get(task.projectId)?.name : undefined,
-  }));
-}
-
-function sortAndPageTasks(tasks, payload) {
-  const sortBy = valueOf(payload || {}, "sortBy", "sort_by");
-  let out = [...tasks];
-  if (["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"].includes(sortBy)) {
-    const direction = valueOf(payload || {}, "sortDirection", "sort_direction") === "desc" ? -1 : 1;
-    out.sort((a, b) => compareTaskField(a, b, sortBy) * direction);
-  }
-  const offset = Math.max(0, Number(valueOf(payload || {}, "offset", "offset") || 0));
-  const limitValue = valueOf(payload || {}, "limit", "limit");
-  if (offset > 0) out = out.slice(offset);
-  if (limitValue != null) out = out.slice(0, Math.max(0, Number(limitValue)));
-  return out;
-}
-
-function compareTaskField(a, b, field) {
-  const av = a[field];
-  const bv = b[field];
-  if (av == null && bv == null) return String(a.title || "").localeCompare(String(b.title || ""));
-  if (av == null) return 1;
-  if (bv == null) return -1;
-  if (typeof av === "number" || typeof bv === "number") return Number(av) - Number(bv);
-  return String(av).localeCompare(String(bv)) || String(a.title || "").localeCompare(String(b.title || ""));
-}
-
 async function getTasksBySource(source) {
   const normalized = ["active", "archived", "all"].includes(source) ? source : "active";
   const active = (await PluginAPI.getTasks()).map((task) => ({
@@ -288,23 +154,6 @@ async function getTasksBySource(source) {
     isArchived: true,
   }));
   return normalized === "archived" ? archived : [...active, ...archived];
-}
-
-function valueOf(obj, camelName, snakeName) {
-  if (obj[camelName] !== undefined) return obj[camelName];
-  return obj[snakeName];
-}
-
-function pickFields(task, fields) {
-  const out = {};
-  for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(task, field)) out[field] = task[field];
-  }
-  return out;
-}
-
-function localDateStr(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 async function taskGet(payload) {
@@ -341,9 +190,7 @@ async function taskArchive(payload) {
   const task = await findTask(taskId);
   if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
 
-  const localRest = localRestConfig();
-  if (localRest) {
-    await localRestRequest(localRest, `/tasks/${encodeURIComponent(taskId)}/archive`, { method: "POST", errorCode: "LOCAL_REST_ARCHIVE_FAILED" });
+  if (await localRest.archiveTask(taskId)) {
     return { archived: true, via: "localRest" };
   }
 
@@ -357,51 +204,6 @@ async function taskArchive(payload) {
     "True archive requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL. Pass allowDoneFallback:true only if marking done is acceptable.",
     false,
   );
-}
-
-function localRestConfig() {
-  const env = typeof process === "undefined" ? {} : process.env || {};
-  const baseUrl = (env.SP_LOCAL_REST_URL || env.SUPER_PRODUCTIVITY_REST_URL || "").trim();
-  if (!baseUrl) return null;
-  return {
-    baseUrl: baseUrl.replace(/\/+$/, ""),
-    token: (env.SP_LOCAL_REST_TOKEN || "").trim(),
-  };
-}
-
-async function localRestRequest(config, path, options = {}) {
-  if (typeof fetch !== "function") {
-    throw typedError("UNSUPPORTED_ACTION", "Local REST support requires a runtime with fetch support", false);
-  }
-  const headers = {};
-  if (config.token) headers.Authorization = `Bearer ${config.token}`;
-  const response = await fetch(`${config.baseUrl}${path}`, {
-    method: options.method || "GET",
-    headers,
-  });
-  if (!response.ok) {
-    const body = await safeResponseText(response);
-    throw typedError(options.errorCode || "LOCAL_REST_FAILED", `Local REST request failed (${response.status}): ${body || response.statusText}`, false, { status: response.status });
-  }
-  return parseRestResponse(response);
-}
-
-async function parseRestResponse(response) {
-  const body = await safeResponseText(response);
-  if (!body) return null;
-  try {
-    return JSON.parse(body);
-  } catch (_err) {
-    return body;
-  }
-}
-
-async function safeResponseText(response) {
-  try {
-    return await response.text();
-  } catch (_err) {
-    return "";
-  }
 }
 
 async function taskDelete(payload) {
@@ -419,11 +221,7 @@ async function taskDelete(payload) {
 async function taskRestore(payload) {
   const taskId = valueOf(payload || {}, "taskId", "task_id");
   if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
-  const localRest = localRestConfig();
-  if (!localRest) {
-    throw typedError("UNSUPPORTED_ACTION", "Restore requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL", false);
-  }
-  await localRestRequest(localRest, `/tasks/${encodeURIComponent(taskId)}/restore`, { method: "POST", errorCode: "LOCAL_REST_RESTORE_FAILED" });
+  await localRest.restoreTask(taskId);
   return { restored: true, via: "localRest" };
 }
 
@@ -469,9 +267,7 @@ async function validateReorderContext(taskIds, contextId, contextType) {
 async function taskStart(payload) {
   const taskId = valueOf(payload || {}, "taskId", "task_id");
   if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
-  const localRest = localRestConfig();
-  if (localRest) {
-    await localRestRequest(localRest, `/tasks/${encodeURIComponent(taskId)}/start`, { method: "POST", errorCode: "LOCAL_REST_START_FAILED" });
+  if (await localRest.startTask(taskId)) {
     return { started: true, via: "localRest" };
   }
   const tasks = await PluginAPI.getTasks();
@@ -485,9 +281,7 @@ async function taskStart(payload) {
 }
 
 async function taskStop() {
-  const localRest = localRestConfig();
-  if (localRest) {
-    await localRestRequest(localRest, "/task-control/stop", { method: "POST", errorCode: "LOCAL_REST_STOP_FAILED" });
+  if (await localRest.stopCurrentTask()) {
     return { stopped: true, via: "localRest" };
   }
   const tasks = await PluginAPI.getTasks();
@@ -498,10 +292,9 @@ async function taskStop() {
 }
 
 async function taskCurrent() {
-  const localRest = localRestConfig();
-  if (localRest) {
-    const body = await localRestRequest(localRest, "/task-control/current", { errorCode: "LOCAL_REST_CURRENT_FAILED" });
-    return { task: normalizeCurrentTaskResponse(body), via: "localRest" };
+  const restCurrent = await localRest.getCurrentTask();
+  if (restCurrent.configured) {
+    return { task: restCurrent.task, via: "localRest" };
   }
   const tasks = await PluginAPI.getTasks();
   const active = tasks.find((t) => t.currentTimestamp > 0);
@@ -517,14 +310,6 @@ async function taskCurrent() {
       dueDay: active.dueDay,
     },
   };
-}
-
-function normalizeCurrentTaskResponse(body) {
-  if (!body) return null;
-  if (body.task !== undefined) return body.task;
-  if (body.currentTask !== undefined) return body.currentTask;
-  if (body.id || body.title) return body;
-  return null;
 }
 
 async function taskBulkComplete(payload) {
@@ -786,40 +571,6 @@ async function taskCompactNotes(payload) {
     result.updated = true;
   }
   return result;
-}
-
-function compactTaskSummary(task) {
-  return {
-    id: task.id,
-    title: task.title,
-    projectId: task.projectId,
-    parentId: task.parentId,
-    dueDay: task.dueDay,
-    plannedAt: task.plannedAt,
-    timeEstimate: task.timeEstimate,
-    isDone: !!task.isDone,
-    isArchived: !!task.isArchived,
-    notesLength: String(task.notes || "").length,
-  };
-}
-
-function hasSuspiciousDatesOrEstimates(task) {
-  const tenYears = Date.now() + 10 * 365 * 86400000;
-  const oneYearMs = 365 * 86400000;
-  if (task.dueDay != null && !isLocalDateString(task.dueDay)) return true;
-  if (task.plannedAt != null && (!Number.isFinite(Number(task.plannedAt)) || Number(task.plannedAt) < 0 || Number(task.plannedAt) > tenYears)) return true;
-  if (task.timeEstimate != null && (!Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) < 0 || Number(task.timeEstimate) > oneYearMs)) return true;
-  return false;
-}
-
-function isLocalDateString(value) {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function dayRangeMs(dateStr) {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const start = new Date(year, month - 1, day).getTime();
-  return [start, start + 86400000];
 }
 
 function localDateRange(startDate, endDate) {

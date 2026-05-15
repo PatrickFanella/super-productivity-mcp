@@ -1,5 +1,18 @@
 {
   "protocolVersion": "2.0",
+  "resources": [
+    { "uri": "sp://projects", "name": "Projects", "description": "All Super Productivity projects", "action": "project.list", "payload": {} },
+    { "uri": "sp://tags", "name": "Tags", "description": "All Super Productivity tags", "action": "tag.list", "payload": {} },
+    { "uri": "sp://tasks/active", "name": "Active incomplete tasks", "description": "Incomplete active tasks", "action": "task.list", "payload": { "source": "active", "includeDone": false } },
+    { "uri": "sp://tasks/archived", "name": "Archived tasks", "description": "Archived tasks when the plugin runtime supports archived reads", "action": "task.listArchived", "payload": {} },
+    { "uri": "sp://tasks/current-context", "name": "Current-context tasks", "description": "Tasks from the current Super Productivity context when available", "action": "task.listCurrentContext", "payload": { "includeDone": false } },
+    { "uri": "sp://tasks/today", "name": "Tasks planned today", "description": "Incomplete tasks planned for today", "action": "task.list", "payload": { "includeDone": false, "plannedForToday": true } },
+    { "uri": "sp://tasks/overdue", "name": "Overdue tasks", "description": "Incomplete tasks with due dates before today", "action": "task.list", "payload": { "includeDone": false, "overdue": true } },
+    { "uri": "sp://tasks/unscheduled", "name": "Unscheduled active tasks", "description": "Active top-level tasks with no planned date or due date", "action": "task.findUnscheduledActive", "payload": { "topLevelOnly": true } },
+    { "uri": "sp://schedule/today", "name": "Today schedule", "description": "Incomplete tasks planned today with concise synthetic metadata", "action": "task.list", "payload": { "includeDone": false, "plannedForToday": true, "includeSynthetic": true, "sortBy": "plannedAt" } },
+    { "uri": "sp://schedule/health", "name": "Schedule health", "description": "Schedule hygiene counts and concise task lists", "action": "task.scheduleHealth", "payload": {} },
+    { "uri": "sp://counters", "name": "Plugin counters", "description": "All Super Productivity plugin counters when available", "action": "counter.list", "payload": {} }
+  ],
   "tools": [
     {
       "mcpName": "create_task",

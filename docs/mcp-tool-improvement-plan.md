@@ -23,8 +23,9 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 10 added plugin API parity tools for archived reads, current-context reads, notifications, and counters.
 - Wave 11 documented Local REST setup, supported tools, fallbacks, and troubleshooting in `docs/local-rest.md`.
 - Wave 12 expanded read-only MCP resources for active, archived, current-context tasks, and counters.
+- Architecture wave A moved resources into the catalog, extracted Local REST and task helper seams, added a packaging-time root plugin parity gate, and made eval coverage executable via `scripts/check-evals.js`.
 
-Next phases should focus on evals and polish.
+Next phases should focus on generated docs, output contracts, real bridge E2E, and release gates.
 
 ## Top priorities
 

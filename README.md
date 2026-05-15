@@ -270,12 +270,12 @@ To install in Super Productivity:
 
 ### MCP eval scenarios
 
-Read-only MCP evaluation scenarios live in [`docs/evals/mcp-schedule-evals.xml`](docs/evals/mcp-schedule-evals.xml). They document stable agent-use questions for the schedule cleanup, discovery, archive/restore, dry-run, and resource surfaces. They are scenario specs today, not an executable harness.
+Read-only MCP evaluation scenarios live in [`docs/evals/mcp-schedule-evals.xml`](docs/evals/mcp-schedule-evals.xml). They document stable agent-use questions for the schedule cleanup, discovery, archive/restore, dry-run, and resource surfaces. `make test` runs `scripts/check-evals.js` to enforce well-formed scenario coverage against the current catalog.
 
 ### Run tests
 
 ```bash
-# All checks (catalog drift + Go unit tests + JS tests + E2E)
+# All checks (catalog drift + Go unit tests + JS tests + E2E + eval checks)
 make test
 
 # Go unit tests only
@@ -286,6 +286,9 @@ node --test plugin/**/*.test.js plugin/bridge/**/*.test.js
 
 # E2E tests only
 go test ./test/e2e -v
+
+# MCP eval scenario checks only
+node scripts/check-evals.js
 
 # Plugin packaging smoke test
 make package-plugin

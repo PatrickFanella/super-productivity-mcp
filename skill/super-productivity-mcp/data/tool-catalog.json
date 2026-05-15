@@ -93,6 +93,45 @@
       }
     },
     {
+      "mcpName": "get_archived_tasks",
+      "action": "task.listArchived",
+      "description": "List archived tasks when PluginAPI.getArchivedTasks is available; supports the same shaping fields as get_tasks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeSynthetic": { "type": "boolean" },
+          "include_synthetic": { "type": "boolean" },
+          "sortBy": { "type": "string", "enum": ["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"] },
+          "sort_by": { "type": "string", "enum": ["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"] },
+          "sortDirection": { "type": "string", "enum": ["asc", "desc"] },
+          "sort_direction": { "type": "string", "enum": ["asc", "desc"] },
+          "limit": { "type": "integer", "minimum": 0 },
+          "offset": { "type": "integer", "minimum": 0 },
+          "fields": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "mcpName": "get_current_context_tasks",
+      "action": "task.listCurrentContext",
+      "description": "List tasks from Super Productivity's current context when PluginAPI.getCurrentContextTasks is available.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeDone": { "type": "boolean" },
+          "includeSynthetic": { "type": "boolean" },
+          "include_synthetic": { "type": "boolean" },
+          "sortBy": { "type": "string", "enum": ["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"] },
+          "sort_by": { "type": "string", "enum": ["title", "created", "updated", "dueDay", "plannedAt", "timeEstimate"] },
+          "sortDirection": { "type": "string", "enum": ["asc", "desc"] },
+          "sort_direction": { "type": "string", "enum": ["asc", "desc"] },
+          "limit": { "type": "integer", "minimum": 0 },
+          "offset": { "type": "integer", "minimum": 0 },
+          "fields": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    {
       "mcpName": "get_task",
       "action": "task.get",
       "description": "Get a specific task by ID",
@@ -629,6 +668,94 @@
           }
         },
         "required": ["message"]
+      }
+    },
+    {
+      "mcpName": "notify_user",
+      "action": "notification.notify",
+      "description": "Send a Super Productivity notification through PluginAPI.notify when available",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "required": ["message"]
+      }
+    },
+    {
+      "mcpName": "get_counters",
+      "action": "counter.list",
+      "description": "List all plugin counters when PluginAPI.getAllCounters is available",
+      "inputSchema": { "type": "object" }
+    },
+    {
+      "mcpName": "get_counter",
+      "action": "counter.get",
+      "description": "Read one plugin counter by id when PluginAPI.getCounter is available",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "counterId": { "type": "string" },
+          "counter_id": { "type": "string" }
+        }
+      }
+    },
+    {
+      "mcpName": "set_counter",
+      "action": "counter.set",
+      "description": "Set one plugin counter by id when PluginAPI.setCounter is available",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "counterId": { "type": "string" },
+          "counter_id": { "type": "string" },
+          "value": { "type": "number" }
+        },
+        "required": ["value"]
+      }
+    },
+    {
+      "mcpName": "increment_counter",
+      "action": "counter.increment",
+      "description": "Increment one plugin counter by id; delta defaults to 1",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "counterId": { "type": "string" },
+          "counter_id": { "type": "string" },
+          "delta": { "type": "number" }
+        }
+      }
+    },
+    {
+      "mcpName": "decrement_counter",
+      "action": "counter.decrement",
+      "description": "Decrement one plugin counter by id; delta defaults to 1",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "counterId": { "type": "string" },
+          "counter_id": { "type": "string" },
+          "delta": { "type": "number" }
+        }
+      }
+    },
+    {
+      "mcpName": "delete_counter",
+      "action": "counter.delete",
+      "description": "Delete one plugin counter by id when PluginAPI.deleteCounter is available",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "counterId": { "type": "string" },
+          "counter_id": { "type": "string" }
+        }
       }
     },
     {

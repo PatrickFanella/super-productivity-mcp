@@ -367,6 +367,23 @@
     return { tasks };
   }
 
+  async function taskArchivedList(payload) {
+    if (typeof PluginAPI.getArchivedTasks !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.getArchivedTasks is not available in this Super Productivity runtime', false);
+    return taskList(Object.assign({}, payload || {}, { source: 'archived' }));
+  }
+
+  async function taskCurrentContextList(payload) {
+    if (typeof PluginAPI.getCurrentContextTasks !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.getCurrentContextTasks is not available in this Super Productivity runtime', false);
+    payload = payload || {};
+    let tasks = (await PluginAPI.getCurrentContextTasks()).map((task) => Object.assign({ isArchived: false }, task, { isArchived: task.isArchived == null ? false : task.isArchived }));
+    if (payload.includeDone === false) tasks = tasks.filter((task) => !task.isDone);
+    if (valueOf(payload, 'includeSynthetic', 'include_synthetic')) tasks = await withSyntheticTaskFields(tasks);
+    tasks = sortAndPageTasks(tasks, payload);
+    const fields = Array.isArray(payload.fields) ? payload.fields : [];
+    if (fields.length > 0) tasks = tasks.map((task) => pickFields(task, fields));
+    return { tasks };
+  }
+
   async function getTasksBySource(source) {
     const normalized = ['active', 'archived', 'all'].includes(source) ? source : 'active';
     const active = (await PluginAPI.getTasks()).map((task) => Object.assign({ isArchived: false }, task, { isArchived: task.isArchived == null ? false : task.isArchived }));
@@ -910,6 +927,8 @@
     'task.create': taskCreate,
     'task.createWithSubtasks': taskCreateWithSubtasks,
     'task.list': taskList,
+    'task.listArchived': taskArchivedList,
+    'task.listCurrentContext': taskCurrentContextList,
     'task.get': taskGet,
     'task.update': taskUpdate,
     'task.complete': taskComplete,
@@ -951,6 +970,48 @@
       if (typeof PluginAPI.showSnack === 'function') await PluginAPI.showSnack({ message, msg: message, type });
       else console.log('[notification:' + type + '] ' + message);
       return { shown: true, type };
+    },
+    'notification.notify': async (payload) => {
+      if (typeof PluginAPI.notify !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.notify is not available in this Super Productivity runtime', false);
+      await PluginAPI.notify({ title: (payload && payload.title) || 'Super Productivity MCP', message: (payload && payload.message) || '' });
+      return { notified: true };
+    },
+    'counter.list': async () => {
+      if (typeof PluginAPI.getAllCounters !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.getAllCounters is not available in this Super Productivity runtime', false);
+      return { counters: await PluginAPI.getAllCounters() };
+    },
+    'counter.get': async (payload) => {
+      const id = (payload && (payload.id || payload.counterId || payload.counter_id));
+      if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
+      if (typeof PluginAPI.getCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.getCounter is not available in this Super Productivity runtime', false);
+      return { id, value: await PluginAPI.getCounter(id) };
+    },
+    'counter.set': async (payload) => {
+      const id = (payload && (payload.id || payload.counterId || payload.counter_id));
+      if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
+      const value = Number((payload && payload.value) || 0);
+      if (typeof PluginAPI.setCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.setCounter is not available in this Super Productivity runtime', false);
+      await PluginAPI.setCounter(id, value);
+      return { id, value };
+    },
+    'counter.increment': async (payload) => {
+      const id = (payload && (payload.id || payload.counterId || payload.counter_id));
+      if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
+      if (typeof PluginAPI.incrementCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.incrementCounter is not available in this Super Productivity runtime', false);
+      return { id, value: await PluginAPI.incrementCounter(id, Number((payload && payload.delta) || 1)) };
+    },
+    'counter.decrement': async (payload) => {
+      const id = (payload && (payload.id || payload.counterId || payload.counter_id));
+      if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
+      if (typeof PluginAPI.decrementCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.decrementCounter is not available in this Super Productivity runtime', false);
+      return { id, value: await PluginAPI.decrementCounter(id, Number((payload && payload.delta) || 1)) };
+    },
+    'counter.delete': async (payload) => {
+      const id = (payload && (payload.id || payload.counterId || payload.counter_id));
+      if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
+      if (typeof PluginAPI.deleteCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.deleteCounter is not available in this Super Productivity runtime', false);
+      await PluginAPI.deleteCounter(id);
+      return { id, deleted: true };
     },
     'bridge.health': async () => ({ ok: true, message: 'bridge alive', dirs }),
     'bridge.checkConnection': async () => ({ ok: true, message: 'bridge alive', dirs }),

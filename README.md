@@ -171,6 +171,8 @@ Popup asset lookup order:
 |----------|-------------|
 | `create_task` | Create a new task in Super Productivity. Supports short syntax in title: `#tag`, `+project`, `@due`, estimates like `30m` or `1h/2h`. |
 | `get_tasks` | List tasks from Super Productivity; supports active/archived/all sources when archived tasks API is available |
+| `get_archived_tasks` | List archived tasks when the plugin runtime supports archived task reads |
+| `get_current_context_tasks` | List tasks from Super Productivity's current context when available |
 | `create_task_with_subtasks` | Create a parent task and subtasks in one operation. Supports short syntax in parent and subtask titles. |
 | `get_task` | Get a specific task by ID |
 | `update_task` | Update task fields |
@@ -208,6 +210,13 @@ Popup asset lookup order:
 | `create_tag` | Create a new tag |
 | `update_tag` | Update a tag |
 | `show_notification` | Show a notification in Super Productivity |
+| `notify_user` | Send a Super Productivity notification through PluginAPI.notify when available |
+| `get_counters` | List all plugin counters when available |
+| `get_counter` | Read one plugin counter by id |
+| `set_counter` | Set one plugin counter by id |
+| `increment_counter` | Increment one plugin counter by id |
+| `decrement_counter` | Decrement one plugin counter by id |
+| `delete_counter` | Delete one plugin counter by id |
 | `bridge_health` | Check that the plugin bridge is alive |
 | `check_connection` | Upstream-compatible alias for checking whether Super Productivity and the plugin bridge are responding |
 | `debug_directories` | Show resolved plugin bridge IPC directories for diagnostics |

@@ -213,6 +213,28 @@ async function taskList(payload) {
   return { tasks };
 }
 
+async function taskArchivedList(payload) {
+  if (typeof PluginAPI.getArchivedTasks !== "function") {
+    throw typedError("UNSUPPORTED_ACTION", "PluginAPI.getArchivedTasks is not available in this Super Productivity runtime", false);
+  }
+  return taskList({ ...(payload || {}), source: "archived" });
+}
+
+async function taskCurrentContextList(payload) {
+  if (typeof PluginAPI.getCurrentContextTasks !== "function") {
+    throw typedError("UNSUPPORTED_ACTION", "PluginAPI.getCurrentContextTasks is not available in this Super Productivity runtime", false);
+  }
+  payload = payload || {};
+  const includeDone = payload.includeDone !== false;
+  let tasks = (await PluginAPI.getCurrentContextTasks()).map((task) => ({ ...task, isArchived: task.isArchived ?? false }));
+  if (!includeDone) tasks = tasks.filter((task) => !task.isDone);
+  if (valueOf(payload, "includeSynthetic", "include_synthetic")) tasks = await withSyntheticTaskFields(tasks);
+  tasks = sortAndPageTasks(tasks, payload);
+  const fields = Array.isArray(payload.fields) ? payload.fields : [];
+  if (fields.length > 0) tasks = tasks.map((task) => pickFields(task, fields));
+  return { tasks };
+}
+
 async function withSyntheticTaskFields(tasks) {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const projects = typeof PluginAPI.getAllProjects === "function" ? await PluginAPI.getAllProjects() : [];
@@ -954,6 +976,8 @@ module.exports = {
   "task.create": taskCreate,
   "task.createWithSubtasks": taskCreateWithSubtasks,
   "task.list": taskList,
+  "task.listArchived": taskArchivedList,
+  "task.listCurrentContext": taskCurrentContextList,
   "task.get": taskGet,
   "task.update": taskUpdate,
   "task.complete": taskComplete,

@@ -637,6 +637,34 @@ test("task.list supports archived source, synthetic fields, sorting and paging",
   ]);
 });
 
+test("task.listArchived requires archive API and delegates shaping", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [],
+    getArchivedTasks: async () => [{ id: "arch", title: "Archived", isDone: true }],
+  };
+
+  const out = await taskActions["task.listArchived"]({ fields: ["id", "isArchived"] });
+  assert.deepEqual(out.tasks, [{ id: "arch", isArchived: true }]);
+
+  global.PluginAPI = { getTasks: async () => [] };
+  await assert.rejects(taskActions["task.listArchived"]({}), (err) => err.code === "UNSUPPORTED_ACTION");
+});
+
+test("task.listCurrentContext uses PluginAPI current context tasks", async () => {
+  global.PluginAPI = {
+    getCurrentContextTasks: async () => [
+      { id: "active", title: "Active", isDone: false, notes: "123" },
+      { id: "done", title: "Done", isDone: true },
+    ],
+  };
+
+  const out = await taskActions["task.listCurrentContext"]({ includeDone: false, includeSynthetic: true, fields: ["id", "noteLength"] });
+  assert.deepEqual(out.tasks, [{ id: "active", noteLength: 3 }]);
+
+  global.PluginAPI = {};
+  await assert.rejects(taskActions["task.listCurrentContext"]({}), (err) => err.code === "UNSUPPORTED_ACTION");
+});
+
 test("task.scheduleRange groups planned tasks by local date", async () => {
   global.PluginAPI = {
     getTasks: async () => [

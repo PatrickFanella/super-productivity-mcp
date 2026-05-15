@@ -125,6 +125,8 @@ OpenCode example:
 
 The plugin inside Super Productivity must be configured to use the **same** `SP_MCP_DATA_DIR`.
 
+See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported tools, fallbacks, and troubleshooting.
+
 ## Omarchy / Hyprland quick add
 
 `sp-quick-add` opens a prompt and creates a Super Productivity task through the same plugin IPC bridge as the MCP server. Walker remains the default prompt. A themeable GTK/Wayland popup is available with `--prompt popup`. Both support the same task title short syntax handled by `create_task` (`#tag`, `+project`, `@due`, estimates like `30m`).

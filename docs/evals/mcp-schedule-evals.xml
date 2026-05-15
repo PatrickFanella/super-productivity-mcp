@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>Using only read-only calls, identify which MCP tool gives the fastest schedule hygiene snapshot before editing a user's whole task list. The answer must be the exact tool name.</question>
+    <answer>get_schedule_health</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A user asks which active top-level tasks have neither plannedAt nor dueDay. Which exact MCP tool should an agent call first?</question>
+    <answer>find_unscheduled_active_tasks</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A user wants tasks planned between two local dates, grouped by day and ordered by plannedAt. Which exact MCP tool provides that read-only view?</question>
+    <answer>get_schedule_range</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An agent must inspect archived tasks without mutating anything. Which get_tasks argument should be set to read only archived tasks?</question>
+    <answer>source=archived</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An agent needs projectTitle, parentTitle, noteLength, subtaskCount, and isRecurring in task results. Which get_tasks boolean argument enables those synthetic fields?</question>
+    <answer>includeSynthetic=true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A schedule rewrite should preview changes and avoid mutation by default. Which two arguments must be supplied to auto_schedule_tasks to actually apply changes?</question>
+    <answer>dryRun=false and confirmApply=true</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A huge note must be compacted, but the bridge must not summarize it itself. Which exact argument must the caller provide to compact_task_notes?</question>
+    <answer>replacementNotes</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>True archive and restore require an optional local REST base URL. Name either accepted environment variable for that URL.</question>
+    <answer>SP_LOCAL_REST_URL</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which MCP resource exposes schedule hygiene counts and concise task lists without requiring a tool call?</question>
+    <answer>sp://schedule/health</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An agent wants incomplete tasks planned today with concise synthetic metadata via a resource. Which resource URI should it read?</question>
+    <answer>sp://schedule/today</answer>
+  </qa_pair>
+</evaluation>

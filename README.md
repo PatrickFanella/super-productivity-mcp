@@ -248,6 +248,10 @@ To install in Super Productivity:
 
 ## Development
 
+### MCP eval scenarios
+
+Read-only MCP evaluation scenarios live in [`docs/evals/mcp-schedule-evals.xml`](docs/evals/mcp-schedule-evals.xml). They document stable agent-use questions for the schedule cleanup, discovery, archive/restore, dry-run, and resource surfaces. They are scenario specs today, not an executable harness.
+
 ### Run tests
 
 ```bash

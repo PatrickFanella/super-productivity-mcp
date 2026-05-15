@@ -120,7 +120,7 @@ func TestResourcesListExposesSuperProductivityResources(t *testing.T) {
 		res := raw.(map[string]any)
 		uris[res["uri"].(string)] = true
 	}
-	for _, uri := range []string{"sp://projects", "sp://tags", "sp://tasks/today", "sp://tasks/overdue", "sp://tasks/unscheduled", "sp://schedule/today", "sp://schedule/health"} {
+	for _, uri := range []string{"sp://projects", "sp://tags", "sp://tasks/active", "sp://tasks/archived", "sp://tasks/current-context", "sp://tasks/today", "sp://tasks/overdue", "sp://tasks/unscheduled", "sp://schedule/today", "sp://schedule/health", "sp://counters"} {
 		if !uris[uri] {
 			t.Fatalf("missing resource %s in %#v", uri, resources)
 		}
@@ -172,6 +172,31 @@ func TestTasksUnscheduledResourceDispatchesTopLevelFilter(t *testing.T) {
 		t.Fatalf("dispatched action %q", br.lastReq.Action)
 	}
 	if br.lastReq.Payload["topLevelOnly"] != true {
+		t.Fatalf("unexpected payload %#v", br.lastReq.Payload)
+	}
+}
+
+func TestArchivedAndCounterResourcesDispatchToBridge(t *testing.T) {
+	br := &stubBridge{resp: domain.Response{Result: map[string]any{"ok": true}}}
+	s := newServer(t, br)
+	_ = runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"sp://tasks/archived"}}`)
+	if br.lastReq.Action != "task.listArchived" {
+		t.Fatalf("dispatched action %q", br.lastReq.Action)
+	}
+	_ = runRPC(t, s, `{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"sp://counters"}}`)
+	if br.lastReq.Action != "counter.list" {
+		t.Fatalf("dispatched action %q", br.lastReq.Action)
+	}
+}
+
+func TestCurrentContextResourceDispatchesIncompleteFilter(t *testing.T) {
+	br := &stubBridge{resp: domain.Response{Result: map[string]any{"tasks": []any{}}}}
+	s := newServer(t, br)
+	_ = runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"sp://tasks/current-context"}}`)
+	if br.lastReq.Action != "task.listCurrentContext" {
+		t.Fatalf("dispatched action %q", br.lastReq.Action)
+	}
+	if br.lastReq.Payload["includeDone"] != false {
 		t.Fatalf("unexpected payload %#v", br.lastReq.Payload)
 	}
 }

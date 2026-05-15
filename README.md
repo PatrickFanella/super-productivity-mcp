@@ -235,11 +235,15 @@ Safety notes:
 |--------------|-----------------|
 | `sp://projects` | All Super Productivity projects as JSON |
 | `sp://tags` | All Super Productivity tags as JSON |
+| `sp://tasks/active` | Incomplete active tasks as JSON |
+| `sp://tasks/archived` | Archived tasks when the plugin runtime supports archived task reads |
+| `sp://tasks/current-context` | Incomplete tasks from the current Super Productivity context when available |
 | `sp://tasks/today` | Incomplete tasks planned for today as JSON |
 | `sp://tasks/overdue` | Incomplete overdue tasks as JSON |
 | `sp://tasks/unscheduled` | Active top-level tasks with no planned date or due date as JSON |
 | `sp://schedule/today` | Incomplete tasks planned today with concise synthetic metadata as JSON |
 | `sp://schedule/health` | Schedule hygiene counts and concise task lists as JSON |
+| `sp://counters` | All Super Productivity plugin counters when available |
 
 ## Package the Super Productivity plugin
 

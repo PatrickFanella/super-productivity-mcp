@@ -22,6 +22,7 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 9 documented the plugin bridge source-of-truth decision in `docs/adr/0001-plugin-bridge-source-of-truth.md`.
 - Wave 10 added plugin API parity tools for archived reads, current-context reads, notifications, and counters.
 - Wave 11 documented Local REST setup, supported tools, fallbacks, and troubleshooting in `docs/local-rest.md`.
+- Wave 12 expanded read-only MCP resources for active, archived, current-context tasks, and counters.
 
 Next phases should focus on evals and polish.
 

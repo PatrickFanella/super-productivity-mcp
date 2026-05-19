@@ -1,12 +1,13 @@
-# Go rewrite package layout
+# Suite package and contract layout
 
 ## Package boundaries
 
-- `internal/domain`: protocol-independent contracts and typed errors.
+- `internal/domain`: shared suite contract types, including the plugin IPC protocol version, `Bridge` interface, request/response structs, and typed errors.
 - `internal/catalog`: canonical tool catalog (SSOT for MCP name ↔ JS action ↔ schema), loaded from `internal/catalog/tools.json` and mirrored to `plugin/bridge/tool-catalog.json` and `skill/super-productivity-mcp/data/tool-catalog.json`.
-- `internal/pluginipc`: file transport implementation for plugin bridge; owns the request lifecycle (inbox → outbox/deadletter, stall vs timeout distinction).
+- `internal/pluginipc`: file transport implementation for plugin bridge; owns the request lifecycle (inbox → outbox/deadletter, stall vs timeout distinction). Used by both `sp-mcp` and `sp-quick-add`.
 - `internal/mcpadapter`: stdio adapter; dispatches `tools/call` directly to `Bridge.Call` using the catalog. No service layer.
-- `internal/config`: env/path/timeout/poll-interval config.
+- `internal/quickadd`: prompt/task/notification orchestration for `sp-quick-add`; depends on a task creator interface and uses the plugin IPC bridge in the CLI adapter.
+- `internal/config`: env/path/timeout/poll-interval config shared by Go clients.
 - `internal/logging`: logger construction.
 - `internal/version`: build metadata + `MCPProtocolVersion` and `EnvelopeProtocolVersion` constants.
 

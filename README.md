@@ -1,8 +1,8 @@
 # super-productivity-mcp
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that connects AI assistants (Claude, Cursor, VS Code Copilot, and others) to [Super Productivity](https://super-productivity.com/) — the open-source time-tracking and task-management app.
+An integrated Super Productivity automation suite with a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server, a desktop quick-add launcher, a Super Productivity plugin bridge, and an agent skill bundle.
 
-With this integration you can ask your AI assistant to create tasks, list projects, add tracked time, and more, all without leaving your editor or chat interface.
+With this suite you can ask your AI assistant to create tasks, list projects, add tracked time, and more. You can also use `sp-quick-add` to add tasks from your desktop without opening an AI client.
 
 ## How it works
 
@@ -10,16 +10,35 @@ With this integration you can ask your AI assistant to create tasks, list projec
 AI client (Claude / Cursor / VS Code)
     │  MCP JSON-RPC over stdio
     ▼
-sp-mcp  (Go binary — this repo)
+sp-mcp
+    │
     │  file IPC  (inbox / outbox / deadletter)
     ▼
-plugin.js  (loaded inside Super Productivity)
-    │  PluginAPI calls
+Super Productivity plugin bridge
+    ▲
+    │  file IPC task.create
+    │
+sp-quick-add  (desktop prompt / popup)
+    │
+    ▼
+Super Productivity PluginAPI
+    │
     ▼
 Super Productivity
 ```
 
-The Go binary speaks the MCP wire protocol to AI clients and bridges requests to a small JavaScript plugin that runs inside Super Productivity via its plugin system.
+`sp-mcp` and `sp-quick-add` are separate clients of the same plugin bridge. The plugin bridge runs inside Super Productivity and is required for either client to create or read tasks.
+
+## Suite artifacts
+
+| Artifact | What it does | Install target |
+| --- | --- | --- |
+| `sp-mcp` | MCP server for AI clients | `make install-mcp` |
+| `sp-quick-add` + `quickadd-popup/` | Desktop quick-add launcher and popup assets | `make install-quick-add` |
+| Super Productivity plugin zip | In-app bridge that executes catalog actions | `make install-plugin` or `make package-plugin` |
+| `skill/super-productivity-mcp` | Agent skill bundle and diagnostics | `make install-skill` |
+
+`make install` installs the full suite. The per-artifact targets are convenience profiles; the supported release unit is still the suite built from one commit.
 
 ## Prerequisites
 
@@ -31,7 +50,7 @@ The Go binary speaks the MCP wire protocol to AI clients and bridges requests to
 
 ## Installation
 
-### Quick install (recommended)
+### Quick install: full suite
 
 One-shot installer — builds the MCP and quick-add binaries, sets up the IPC data directory, installs the skill, packages the plugin zip, and prints the MCP client config:
 
@@ -41,7 +60,18 @@ cd super-productivity-mcp
 make install
 ```
 
-Honored env vars: `PREFIX`, `BIN_DIR`, `DATA_DIR`, `SKILLS_DIR`, `SKIP_BUILD`, `SKIP_SKILL`, `SKIP_DATA_DIR`, `SKIP_PLUGIN_ZIP`. Defaults install to `~/.local/bin` and `~/.local/share/super-productivity-mcp`.
+Install only one artifact profile when you do not want the full suite:
+
+```bash
+make install-mcp        # MCP binary + IPC data directory
+make install-quick-add  # quick-add binary + popup assets + IPC data directory
+make install-plugin     # plugin zip only
+make install-skill      # agent skill bundle only
+```
+
+Honored env vars: `PREFIX`, `BIN_DIR`, `SHARE_DIR`, `BUILD_DIR`, `DATA_DIR`, `SKILLS_DIR`, `SKIP_BUILD`, `SKIP_MCP`, `SKIP_QUICK_ADD`, `SKIP_SKILL`, `SKIP_DATA_DIR`, `SKIP_PLUGIN_ZIP`. Defaults install to `~/.local/bin` and `~/.local/share/super-productivity-mcp`.
+
+If you override `SHARE_DIR` outside the default prefix layout, `sp-quick-add --prompt popup` will only find its popup assets when you also set `SP_QUICK_ADD_POPUP_DIR` or pass `--popup-dir`.
 
 ### Manual install
 
@@ -129,7 +159,7 @@ See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported t
 
 ## Omarchy / Hyprland quick add
 
-`sp-quick-add` opens a prompt and creates a Super Productivity task through the same plugin IPC bridge as the MCP server. Walker remains the default prompt. A themeable GTK/Wayland popup is available with `--prompt popup`. Both support the same task title short syntax handled by `create_task` (`#tag`, `+project`, `@due`, estimates like `30m`).
+`sp-quick-add` opens a prompt and creates a Super Productivity task through the same plugin IPC bridge as the MCP server. It does not require `sp-mcp`, but it does require the Super Productivity plugin bridge to be installed and enabled. Walker remains the default prompt. A themeable GTK/Wayland popup is available with `--prompt popup`. Both support the same task title short syntax handled by `create_task` (`#tag`, `+project`, `@due`, estimates like `30m`).
 
 ```bash
 sp-quick-add
@@ -164,6 +194,8 @@ Popup asset lookup order:
 1. `SP_QUICK_ADD_POPUP_DIR`
 2. `quickadd-popup/` under the current working directory
 3. `<install-prefix>/share/super-productivity-mcp/quickadd-popup`
+
+If your popup assets live somewhere else because `SHARE_DIR` was customized, set `SP_QUICK_ADD_POPUP_DIR` or use `--popup-dir` with `sp-quick-add --prompt popup`.
 
 ## Available tools
 
@@ -222,7 +254,7 @@ Popup asset lookup order:
 | `debug_directories` | Show resolved plugin bridge IPC directories for diagnostics |
 | `bridge_capabilities` | List supported bridge actions |
 
-The full schema for each tool lives in [`internal/catalog/tools.json`](internal/catalog/tools.json).
+The full schema for each tool lives in [`internal/catalog/tools.json`](internal/catalog/tools.json). A generated Markdown view lives in [`docs/tools.md`](docs/tools.md); refresh it with `make generate-docs`.
 
 Safety notes:
 
@@ -290,8 +322,17 @@ go test ./test/e2e -v
 # MCP eval scenario checks only
 node scripts/check-evals.js
 
+# Regenerate catalog-derived docs
+make generate-docs
+
 # Plugin packaging smoke test
 make package-plugin
+
+# Smoke-test install profiles
+make test-install-profiles
+
+# Full release gate (tests + install-profile smoke + package smoke)
+make verify-release
 ```
 
 ### Sync the tool catalog
@@ -306,15 +347,16 @@ CI enforces that the copies never drift from the source (`make check-catalogs`).
 
 ### Architecture
 
-- `cmd/sp-mcp/` — binary entrypoint
+- `cmd/sp-mcp/` — MCP binary entrypoint for AI clients
 - `cmd/sp-quick-add/` — Omarchy/Hyprland quick-add entrypoint
 - `internal/quickadd/` — prompt/task/notification orchestration for quick add
-- `internal/catalog/` — tool catalog (SSOT); loaded at startup
+- `internal/catalog/` — tool catalog (SSOT); loaded at startup and mirrored to plugin/skill copies
 - `internal/mcpadapter/` — MCP JSON-RPC 2.0 stdio adapter
-- `internal/pluginipc/` — file-based IPC transport (inbox → processing → outbox / deadletter)
-- `internal/config/` — environment/config loading
-- `internal/domain/` — shared types and interfaces
-- `plugin/bridge/` — JavaScript plugin that runs inside Super Productivity
+- `internal/pluginipc/` — shared file-based IPC transport (inbox → processing → outbox / deadletter)
+- `internal/config/` — environment/config loading shared by Go clients
+- `internal/domain/` — shared suite contract types and interfaces
+- `plugin/bridge/` — JavaScript bridge that runs inside Super Productivity
+- `skill/super-productivity-mcp/` — agent skill bundle and diagnostics synchronized with the suite catalog
 
 ## Contributing
 

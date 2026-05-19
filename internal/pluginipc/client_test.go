@@ -114,6 +114,7 @@ func TestClientOK(t *testing.T) {
 	if resp.Result["hello"] != "world" {
 		t.Fatalf("unexpected result: %#v", resp.Result)
 	}
+	assertEventKinds(t, cfg, "request.sent", "response.ok")
 }
 
 func TestClientErrorEnvelope(t *testing.T) {
@@ -128,6 +129,7 @@ func TestClientErrorEnvelope(t *testing.T) {
 	if te.Code != "TASK_NOT_FOUND" {
 		t.Fatalf("got code %q", te.Code)
 	}
+	assertEventKinds(t, cfg, "request.sent", "response.error")
 }
 
 func TestClientDeadletter(t *testing.T) {
@@ -141,6 +143,29 @@ func TestClientDeadletter(t *testing.T) {
 	}
 	if te.Code != "DEADLETTER" {
 		t.Fatalf("got code %q", te.Code)
+	}
+}
+
+func assertEventKinds(t *testing.T, cfg config.Config, expected ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(cfg.EventsDir)
+	if err != nil {
+		t.Fatalf("read events: %v", err)
+	}
+	kinds := map[string]bool{}
+	for _, entry := range entries {
+		var event map[string]any
+		if err := (FS{}).ReadJSON(filepath.Join(cfg.EventsDir, entry.Name()), &event); err != nil {
+			t.Fatalf("read event %s: %v", entry.Name(), err)
+		}
+		if kind, _ := event["kind"].(string); kind != "" {
+			kinds[kind] = true
+		}
+	}
+	for _, kind := range expected {
+		if !kinds[kind] {
+			t.Fatalf("missing event kind %q in %#v", kind, kinds)
+		}
 	}
 }
 

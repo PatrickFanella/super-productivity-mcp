@@ -3,6 +3,7 @@ package pluginipc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,6 +53,7 @@ func (l *requestLifecycle) run(ctx context.Context) (domain.Response, error) {
 	if err := l.fs.WriteJSONAtomic(l.inboxPath, l.env); err != nil {
 		return domain.Response{}, err
 	}
+	l.emitEvent("request.sent", map[string]any{"action": l.env.Action})
 
 	ticker := time.NewTicker(l.cfg.PollInterval)
 	defer ticker.Stop()
@@ -67,10 +69,12 @@ func (l *requestLifecycle) run(ctx context.Context) (domain.Response, error) {
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.Canceled) {
+				l.emitEvent("request.canceled", map[string]any{"action": l.env.Action})
 				return domain.Response{}, ErrCanceled
 			}
 			// DeadlineExceeded falls through to ErrTimeout for symmetry
 			// with the overall-timeout path.
+			l.emitEvent("request.timeout", map[string]any{"action": l.env.Action})
 			return domain.Response{}, ErrTimeout
 		case <-ticker.C:
 		}
@@ -83,8 +87,10 @@ func (l *requestLifecycle) run(ctx context.Context) (domain.Response, error) {
 			// Stalled means the inbox file is still where we put it —
 			// the plugin never picked it up.
 			if _, err := os.Stat(l.inboxPath); err == nil {
+				l.emitEvent("request.stalled", map[string]any{"action": l.env.Action})
 				return domain.Response{}, ErrPluginStalled
 			}
+			l.emitEvent("request.timeout", map[string]any{"action": l.env.Action})
 			return domain.Response{}, ErrTimeout
 		}
 	}
@@ -100,15 +106,36 @@ func (l *requestLifecycle) observe() (domain.Response, error, bool) {
 		}
 		_ = os.Remove(l.outboxPath)
 		if resp.Error != nil {
+			l.emitEvent("response.error", map[string]any{"action": l.env.Action, "code": resp.Error.Code})
 			return domain.Response{}, *resp.Error, true
 		}
+		l.emitEvent("response.ok", map[string]any{"action": l.env.Action})
 		return domain.Response{Result: resp.Result}, nil, true
 	}
 	if _, err := os.Stat(l.deadPath); err == nil {
 		// Deadletter only counts as a terminal signal when there is no
 		// outbox response; the JS plugin sometimes writes both, in
 		// which case the outbox check above wins.
+		l.emitEvent("request.deadletter", map[string]any{"action": l.env.Action})
 		return domain.Response{}, ErrDeadletter, true
 	}
 	return domain.Response{}, nil, false
+}
+
+func (l *requestLifecycle) emitEvent(kind string, details map[string]any) {
+	if l.cfg.EventsDir == "" {
+		return
+	}
+	if details == nil {
+		details = map[string]any{}
+	}
+	event := map[string]any{
+		"kind":      kind,
+		"requestId": l.env.ID,
+		"action":    l.env.Action,
+		"at":        time.Now().UTC().Format(time.RFC3339Nano),
+		"details":   details,
+	}
+	name := fmt.Sprintf("%s-%d.json", l.env.ID, time.Now().UnixNano())
+	_ = l.fs.WriteJSONAtomic(filepath.Join(l.cfg.EventsDir, name), event)
 }

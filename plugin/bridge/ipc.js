@@ -5,6 +5,9 @@ const PROTOCOL_VERSION = "2.0";
 
 async function execScript(script, args = [], timeout = 5000) {
   const result = await PluginAPI.executeNodeScript({ script, args, timeout });
+  if (result?.success === false) {
+    throw typedError("NODE_SCRIPT_FAILED", result.error || "Node script execution failed", false);
+  }
   return result?.result ?? result;
 }
 

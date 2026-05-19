@@ -21,14 +21,16 @@ var rawCatalog []byte
 // a plugin IPC action string (the bridge-facing surface), a description, and
 // a JSON Schema describing the tool's arguments.
 type Tool struct {
-	MCPName     string         `json:"mcpName"`
-	Action      string         `json:"action"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-	Internal    bool           `json:"internal,omitempty"`
+	MCPName      string         `json:"mcpName"`
+	Action       string         `json:"action"`
+	Description  string         `json:"description"`
+	InputSchema  map[string]any `json:"inputSchema"`
+	OutputSchema map[string]any `json:"outputSchema,omitempty"`
+	Internal     bool           `json:"internal,omitempty"`
 
-	// schema is the compiled validator; populated on Load.
-	schema *jsonschema.Schema
+	// schemas are compiled validators; populated on Load.
+	schema       *jsonschema.Schema
+	outputSchema *jsonschema.Schema
 }
 
 // Resource is one MCP resource entry backed by a plugin IPC action and a fixed
@@ -99,6 +101,21 @@ func Load() (*Catalog, error) {
 			return nil, fmt.Errorf("catalog: compile schema for %q: %w", t.Action, err)
 		}
 		t.schema = compiled
+		if t.OutputSchema != nil {
+			outputSchemaJSON, err := json.Marshal(t.OutputSchema)
+			if err != nil {
+				return nil, fmt.Errorf("catalog: marshal output schema for %q: %w", t.Action, err)
+			}
+			outputResourceID := "catalog://" + t.Action + ".output.json"
+			if err := compiler.AddResource(outputResourceID, bytes.NewReader(outputSchemaJSON)); err != nil {
+				return nil, fmt.Errorf("catalog: add output schema for %q: %w", t.Action, err)
+			}
+			compiledOutput, err := compiler.Compile(outputResourceID)
+			if err != nil {
+				return nil, fmt.Errorf("catalog: compile output schema for %q: %w", t.Action, err)
+			}
+			t.outputSchema = compiledOutput
+		}
 	}
 	for _, r := range c.Resources {
 		if r.URI == "" || r.Action == "" {
@@ -175,6 +192,22 @@ func (t *Tool) Validate(args map[string]any) error {
 		return domain.TypedError{
 			Code:      "INVALID_ARGS",
 			Message:   fmt.Sprintf("invalid arguments for %s: %s", t.MCPName, err),
+			Retryable: false,
+			Details:   map[string]any{"action": t.Action},
+		}
+	}
+	return nil
+}
+
+// ValidateOutput checks a handler result against the optional outputSchema.
+func (t *Tool) ValidateOutput(result map[string]any) error {
+	if t.outputSchema == nil {
+		return nil
+	}
+	if err := t.outputSchema.Validate(result); err != nil {
+		return domain.TypedError{
+			Code:      "INVALID_OUTPUT",
+			Message:   fmt.Sprintf("invalid output for %s: %s", t.MCPName, err),
 			Retryable: false,
 			Details:   map[string]any{"action": t.Action},
 		}

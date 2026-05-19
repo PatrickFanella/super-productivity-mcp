@@ -76,16 +76,17 @@ func (s *Server) replyErr(enc *json.Encoder, id json.RawMessage, code int, msg s
 
 // toolListEntry is the shape MCP clients expect from tools/list.
 type toolListEntry struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	InputSchema  map[string]any `json:"inputSchema"`
+	OutputSchema map[string]any `json:"outputSchema,omitempty"`
 }
 
 func (s *Server) toolList() []toolListEntry {
 	tools := s.catalog.MCPTools()
 	out := make([]toolListEntry, len(tools))
 	for i, t := range tools {
-		out[i] = toolListEntry{Name: t.MCPName, Description: t.Description, InputSchema: t.InputSchema}
+		out[i] = toolListEntry{Name: t.MCPName, Description: t.Description, InputSchema: t.InputSchema, OutputSchema: t.OutputSchema}
 	}
 	return out
 }
@@ -207,6 +208,10 @@ func (s *Server) handleToolsCall(ctx context.Context, enc *json.Encoder, msg rpc
 	}
 	resp, err := s.bridge.Call(ctx, domain.Request{Action: tool.Action, Payload: args})
 	if err != nil {
+		s.reply(enc, msg.ID, errorContent(err))
+		return
+	}
+	if err := tool.ValidateOutput(resp.Result); err != nil {
 		s.reply(enc, msg.ID, errorContent(err))
 		return
 	}

@@ -91,3 +91,21 @@ func TestValidateTypeMismatch(t *testing.T) {
 		t.Fatalf("expected INVALID_ARGS, got %v", err)
 	}
 }
+
+func TestValidateOutputSchema(t *testing.T) {
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	tool := c.LookupMCP("get_tasks")
+	if tool == nil {
+		t.Fatalf("get_tasks missing")
+	}
+	if err := tool.ValidateOutput(map[string]any{"tasks": []any{map[string]any{"id": "t1"}}}); err != nil {
+		t.Fatalf("valid output failed: %v", err)
+	}
+	var te domain.TypedError
+	if err := tool.ValidateOutput(map[string]any{"results": []any{}}); !errors.As(err, &te) || te.Code != "INVALID_OUTPUT" {
+		t.Fatalf("expected INVALID_OUTPUT, got %v", err)
+	}
+}

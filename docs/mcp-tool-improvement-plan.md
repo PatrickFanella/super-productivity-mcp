@@ -24,8 +24,9 @@ Phase 1 has shipped the safety-first schedule primitives:
 - Wave 11 documented Local REST setup, supported tools, fallbacks, and troubleshooting in `docs/local-rest.md`.
 - Wave 12 expanded read-only MCP resources for active, archived, current-context tasks, and counters.
 - Architecture wave A moved resources into the catalog, extracted Local REST and task helper seams, added a packaging-time root plugin parity gate, and made eval coverage executable via `scripts/check-evals.js`.
+- Architecture wave B added a real Go IPC to JS bridge E2E fixture, output schema contracts for key tools, IPC lifecycle events, `make verify-release`, and generated catalog docs in `docs/tools.md`.
 
-Next phases should focus on generated docs, output contracts, real bridge E2E, and release gates.
+Next phases should focus on fully generating root `plugin.js` from modular action modules and expanding output schemas across the whole catalog.
 
 ## Top priorities
 

@@ -71,6 +71,13 @@
           "offset": { "type": "integer", "minimum": 0 },
           "fields": { "type": "array", "items": { "type": "string" } }
         }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tasks": { "type": "array", "items": { "type": "object" } }
+        },
+        "required": ["tasks"]
       }
     },
     {
@@ -122,6 +129,13 @@
           "offset": { "type": "integer", "minimum": 0 },
           "fields": { "type": "array", "items": { "type": "string" } }
         }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tasks": { "type": "array", "items": { "type": "object" } }
+        },
+        "required": ["tasks"]
       }
     },
     {
@@ -330,6 +344,14 @@
           "dryRun": { "type": "boolean", "description": "When true, return diffs and do not call updateTask." },
           "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." }
         }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "dryRun": { "type": "boolean" },
+          "results": { "type": "array", "items": { "type": "object" } }
+        },
+        "required": ["dryRun", "results"]
       }
     },
     {
@@ -397,6 +419,16 @@
           "includeArchived": { "type": "boolean" },
           "include_archived": { "type": "boolean" }
         }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "staleBeforeDate": { "type": "string" },
+          "counts": { "type": "object" },
+          "tasks": { "type": "object" }
+        },
+        "required": ["date", "staleBeforeDate", "counts", "tasks"]
       }
     },
     {

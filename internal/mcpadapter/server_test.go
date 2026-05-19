@@ -72,6 +72,16 @@ func TestToolsListIsCatalogDriven(t *testing.T) {
 	if len(tools) != len(cat.MCPTools()) {
 		t.Fatalf("expected %d tools, got %d", len(cat.MCPTools()), len(tools))
 	}
+	var foundOutputSchema bool
+	for _, raw := range tools {
+		tool := raw.(map[string]any)
+		if tool["name"] == "get_tasks" {
+			_, foundOutputSchema = tool["outputSchema"].(map[string]any)
+		}
+	}
+	if !foundOutputSchema {
+		t.Fatalf("expected get_tasks outputSchema in tools/list")
+	}
 }
 
 func TestToolsCallDispatchesAction(t *testing.T) {
@@ -99,6 +109,20 @@ func TestToolsCallRejectsInvalidArgs(t *testing.T) {
 	text := result["content"].([]any)[0].(map[string]any)["text"].(string)
 	if !strings.Contains(text, "INVALID_ARGS") {
 		t.Fatalf("expected INVALID_ARGS, got %q", text)
+	}
+}
+
+func TestToolsCallRejectsInvalidOutput(t *testing.T) {
+	br := &stubBridge{resp: domain.Response{Result: map[string]any{"results": []any{}}}}
+	s := newServer(t, br)
+	reply := runRPC(t, s, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_tasks","arguments":{}}}`)
+	result := reply["result"].(map[string]any)
+	if result["isError"] != true {
+		t.Fatalf("expected isError=true, got %#v", result)
+	}
+	text := result["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "INVALID_OUTPUT") {
+		t.Fatalf("expected INVALID_OUTPUT, got %q", text)
 	}
 }
 

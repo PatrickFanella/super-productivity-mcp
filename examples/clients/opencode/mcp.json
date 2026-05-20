@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "super-productivity": {
+      "type": "local",
+      "enabled": true,
+      "command": ["/home/you/.local/bin/sp-mcp"],
+      "environment": {
+        "SP_MCP_DATA_DIR": "/home/you/.local/share/super-productivity-mcp",
+        "SP_MCP_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

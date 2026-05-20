@@ -1,6 +1,6 @@
 ---
 name: super-productivity-mcp
-description: Diagnose and resolve Super Productivity MCP startup, handshake, and bridge reliability issues.
+description: Diagnose and resolve Super Productivity MCP health, development, startup, handshake, catalog, client config, and bridge reliability issues. Use for MCP/runtime failures; use super-productivity-planning for task hygiene, inbox triage, and time-block scheduling.
 license: MIT
 metadata:
   author: PatrickFanella
@@ -12,18 +12,20 @@ metadata:
 
 # Super Productivity MCP: Runtime Reliability and Bridge Diagnostics
 
-You are a runtime diagnostics specialist for the Super Productivity MCP stack. Your role is to identify why the MCP server fails, hangs, or behaves inconsistently, and apply minimal fixes that restore reliable operation.
+You are a runtime diagnostics specialist for the Super Productivity MCP stack. Your role is to identify why the MCP server fails, hangs, or behaves inconsistently, and apply minimal fixes that restore reliable operation. This skill owns MCP health/dev only; task hygiene and schedule planning belong to `super-productivity-planning`.
 
 ## Core Principle
 
-**Treat MCP failures as a pipeline problem: launch → initialize → tools/list → tools/call → plugin bridge round-trip.**
+**Treat MCP failures as a pipeline problem: launch → initialize → tools/list/resources/list → tools/call/resources/read → plugin bridge round-trip.**
 
 ## Quick Reference
 
 - If server hangs on `initialize`: verify protocol implementation and stale processes.
-- If tools are missing: inspect `tools/list` payload and adapter registration.
+- If tools/resources are missing: inspect `tools/list`, `resources/list`, and adapter registration.
 - If tool calls time out: check `SP_MCP_DATA_DIR` routing and plugin bridge outbox responses.
 - If behavior differs across clients: compare per-client MCP config wiring.
+- Current parity surface is catalog-derived. Read `data/tool-catalog.json`
+  instead of trusting hard-coded tool/resource counts.
 
 ## The States
 
@@ -46,18 +48,20 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 - Is stdout contaminated by non-protocol logs?
 **Interventions:**
 - Run protocol smoke script.
-- Ensure JSON-RPC methods are implemented: `initialize`, `tools/list`, `tools/call`.
+- Ensure JSON-RPC methods are implemented: `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`.
 - Route logs to stderr only.
 
-### SPM3: Tool Surface Drift
-**Symptoms:** Server connects but tools are absent/misaligned; client calls unknown tool names.
+### SPM3: Tool/Resource Surface Drift
+**Symptoms:** Server connects but tools/resources are absent/misaligned; client calls unknown tool names or cannot read expected `sp://` resources.
 **Key Questions:**
 - Does `tools/list` include expected names?
+- Does `resources/list` include the resource URIs declared in `data/tool-catalog.json`?
 - Do `mcpName` and `action` in `internal/catalog/tools.json` match the JS handler keys in `plugin/bridge/actions/`?
 - Are schemas valid JSON Schema objects?
 **Interventions:**
 - Compare reported tool names against the canonical catalog (`internal/catalog/tools.json`, mirrored at `plugin/bridge/tool-catalog.json` and `skill/super-productivity-mcp/data/tool-catalog.json`).
 - Edit the Go-side catalog only; run `make sync-catalogs` to propagate.
+- Resource definitions live in the catalog; resource reads dispatch through normal bridge actions.
 
 ### SPM6: Catalog Drift
 **Symptoms:** `make check-catalogs` fails in CI, plugin throws "Tool catalog declares actions without handlers" or "Handlers not declared in tool catalog" at load time, or schema validation rejects arguments the JS handler actually accepts.
@@ -95,11 +99,12 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 ## Diagnostic Process
 
 1. Confirm state from logs (`initialize` stall, unknown tool, timeout, etc.).
-2. Run `scripts/protocol_smoke.ts` against configured launch command.
+2. Run `scripts/protocol_smoke.ts` or a direct JSON-RPC smoke against configured launch command.
 3. If handshake passes, run `scripts/check_runtime_paths.ts` for env/path parity.
 4. Compare tool names to `data/tool-catalog.json`.
-5. Apply smallest fix in the failing layer only.
-6. Re-test in-client and from terminal before concluding.
+5. Check resource URIs if the failure involves `sp://` reads.
+6. Apply smallest fix in the failing layer only.
+7. Re-test in-client and from terminal before concluding.
 
 ## Key Questions
 
@@ -110,7 +115,9 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 
 ### For Runtime Failures
 - Does `tools/list` return all expected tools?
+- Does `resources/list` return the resources declared in `data/tool-catalog.json`?
 - Does a simple tool call (`bridge_health`) succeed?
+- Do compatibility diagnostics (`check_connection`, `debug_directories`) succeed after plugin install?
 - Are inbox/outbox files being created and consumed?
 
 ### For Config Drift
@@ -261,6 +268,7 @@ Use extended thinking for:
 - Launch command exists and is executable (High).
 - `initialize` response shape is valid JSON-RPC/MCP (High).
 - Required tool names exist in `tools/list` (High).
+- Expected resources exist in `resources/list` (High).
 - IPC directory presence and basic accessibility (Medium).
 
 ### What Requires Human Judgment

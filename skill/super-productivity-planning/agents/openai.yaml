@@ -1,0 +1,4 @@
+interface:
+  display_name: "Super Productivity Planning"
+  short_description: "Triage tasks and build time-block plans"
+  default_prompt: "Clean up Super Productivity tasks, triage the inbox, normalize estimates and tags, then create a verified time-block schedule."

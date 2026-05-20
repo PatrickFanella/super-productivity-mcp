@@ -19,6 +19,9 @@ func TestLoadCatalog(t *testing.T) {
 		// All tools currently MCP-exposed; fail loud if that changes silently.
 		t.Fatalf("expected every tool to be MCP-exposed, got %d/%d", len(c.MCPTools()), len(c.Tools))
 	}
+	if len(c.MCPResources()) == 0 {
+		t.Fatalf("expected MCP resources to be catalog-driven")
+	}
 
 	// Spot-check a few canonical mappings.
 	mustMap := map[string]string{
@@ -40,6 +43,10 @@ func TestLoadCatalog(t *testing.T) {
 		if c.LookupAction(action) != tool {
 			t.Fatalf("LookupAction(%q) did not round-trip", action)
 		}
+	}
+	res := c.LookupResource("sp://schedule/health")
+	if res == nil || res.Action != "task.scheduleHealth" {
+		t.Fatalf("schedule health resource did not load: %#v", res)
 	}
 }
 
@@ -82,5 +89,23 @@ func TestValidateTypeMismatch(t *testing.T) {
 	var te domain.TypedError
 	if !errors.As(err, &te) || te.Code != "INVALID_ARGS" {
 		t.Fatalf("expected INVALID_ARGS, got %v", err)
+	}
+}
+
+func TestValidateOutputSchema(t *testing.T) {
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	tool := c.LookupMCP("get_tasks")
+	if tool == nil {
+		t.Fatalf("get_tasks missing")
+	}
+	if err := tool.ValidateOutput(map[string]any{"tasks": []any{map[string]any{"id": "t1"}}}); err != nil {
+		t.Fatalf("valid output failed: %v", err)
+	}
+	var te domain.TypedError
+	if err := tool.ValidateOutput(map[string]any{"results": []any{}}); !errors.As(err, &te) || te.Code != "INVALID_OUTPUT" {
+		t.Fatalf("expected INVALID_OUTPUT, got %v", err)
 	}
 }

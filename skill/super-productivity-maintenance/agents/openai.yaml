@@ -1,0 +1,4 @@
+interface:
+  display_name: "Super Productivity Maintenance"
+  short_description: "Run high-level Super Productivity upkeep"
+  default_prompt: "Audit and maintain Super Productivity by routing health, planning, and review work to the right workflow."

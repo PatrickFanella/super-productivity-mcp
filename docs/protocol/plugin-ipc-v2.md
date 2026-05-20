@@ -86,6 +86,8 @@ Required directories under `SP_MCP_DATA_DIR` (or platform default):
 ## Handshake actions
 
 - `bridge.health`
+- `bridge.checkConnection`
+- `bridge.debugDirectories`
 - `bridge.capabilities`
 
 Capabilities response shape:
@@ -97,6 +99,18 @@ Capabilities response shape:
   "spVersion": "optional"
 }
 ```
+
+## MCP resources
+
+The Go MCP adapter exposes read-only resources and fulfills them by dispatching
+normal bridge actions over IPC:
+
+| Resource URI | Bridge action | Payload |
+| --- | --- | --- |
+| `sp://projects` | `project.list` | `{}` |
+| `sp://tags` | `tag.list` | `{}` |
+| `sp://tasks/today` | `task.list` | `{ "includeDone": false, "plannedForToday": true }` |
+| `sp://tasks/overdue` | `task.list` | `{ "includeDone": false, "overdue": true }` |
 
 ## Timeout/retry policy
 

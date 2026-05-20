@@ -21,7 +21,7 @@ rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/plugin"
 
 cp "$PLUGIN_SRC_DIR/manifest.json" "$STAGE_DIR/manifest.json"
-cp "$ROOT_DIR/plugin.js" "$STAGE_DIR/plugin.js"
+node "$ROOT_DIR/scripts/prepare-plugin-entrypoint.js" "$STAGE_DIR/plugin.js" >&2
 cp -R "$PLUGIN_SRC_DIR/bridge" "$STAGE_DIR/plugin/bridge"
 find "$STAGE_DIR" -type f -name '*.test.js' -delete
 python3 - <<'PY' "$STAGE_DIR/manifest.json" "$VERSION"

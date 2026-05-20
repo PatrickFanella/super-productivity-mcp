@@ -13,7 +13,14 @@
 | `get_tags` | `getAllTags` | `tag.list` | carry-over |
 | `create_tag` | `addTag` | `tag.create` | carry-over |
 | `show_notification` | `showSnack` | `notification.show` | carry-over + typed args |
-| `debug_directories` | n/a | `bridge.health` | replaced by capability/health |
+| `debug_directories` | n/a | `bridge.debugDirectories` | restored as diagnostics alias |
+| `check_connection` | `ping` | `bridge.checkConnection` | upstream-compatible alias |
+| `create_task_with_subtasks` | `createTaskWithSubtasks` | `task.createWithSubtasks` | added |
+| `delete_task` | `deleteTask` | `task.delete` | added; errors if runtime lacks `deleteTask` |
+| `start_task` / `stop_task` / `get_current_task` | timer helpers | `task.start` / `task.stop` / `task.current` | added |
+| bulk/tag/project modifiers | bulk/tag/project helpers | `task.bulk*`, `task.addTag`, `task.removeTag`, `task.moveToProject` | added |
+| `get_worklog` | n/a | `task.worklog` | added from SP worklog fields |
+| resources | n/a | `resources/list` + `resources/read` | added: projects, tags, today, overdue |
 
 ## Confirmed gaps/bugs in Python implementation
 
@@ -36,14 +43,16 @@
 ## Deferred items
 
 1. Local HTTP/socket API adapter runtime (service seam left ready).
-2. Rich natural-language syntax parsing in Go service (kept in plugin/SP side).
+2. Rich natural-language syntax parsing beyond current `#tag`, `+project`, `@due`, and estimate tokens.
 3. Advanced event stream subscriptions beyond file events directory.
 
 ## Parity acceptance checklist
 
-- [ ] task create/list/update/complete/uncomplete/archive/addTime/reorder
-- [ ] project create/list/update
-- [ ] tag create/list/update
-- [ ] notification show
-- [ ] bridge health + capabilities
-- [ ] structured failure payloads
+- [x] task create/list/update/complete/uncomplete/archive/delete/addTime/reorder
+- [x] task subtasks, timers, bulk ops, tag/project modifiers, worklog
+- [x] project create/list/update
+- [x] tag create/list/update
+- [x] notification show
+- [x] bridge health + capabilities + compatibility diagnostics
+- [x] MCP resources for projects, tags, today, overdue
+- [x] structured failure payloads

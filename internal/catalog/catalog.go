@@ -21,23 +21,38 @@ var rawCatalog []byte
 // a plugin IPC action string (the bridge-facing surface), a description, and
 // a JSON Schema describing the tool's arguments.
 type Tool struct {
-	MCPName     string         `json:"mcpName"`
-	Action      string         `json:"action"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-	Internal    bool           `json:"internal,omitempty"`
+	MCPName      string         `json:"mcpName"`
+	Action       string         `json:"action"`
+	Description  string         `json:"description"`
+	InputSchema  map[string]any `json:"inputSchema"`
+	OutputSchema map[string]any `json:"outputSchema,omitempty"`
+	Internal     bool           `json:"internal,omitempty"`
 
-	// schema is the compiled validator; populated on Load.
-	schema *jsonschema.Schema
+	// schemas are compiled validators; populated on Load.
+	schema       *jsonschema.Schema
+	outputSchema *jsonschema.Schema
+}
+
+// Resource is one MCP resource entry backed by a plugin IPC action and a fixed
+// payload. Resources are read-only MCP surfaces for common stable views.
+type Resource struct {
+	URI         string         `json:"uri"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	MimeType    string         `json:"mimeType,omitempty"`
+	Action      string         `json:"action"`
+	Payload     map[string]any `json:"payload,omitempty"`
 }
 
 // Catalog is the loaded, validated tool catalog.
 type Catalog struct {
-	ProtocolVersion string  `json:"protocolVersion"`
-	Tools           []*Tool `json:"tools"`
+	ProtocolVersion string      `json:"protocolVersion"`
+	Tools           []*Tool     `json:"tools"`
+	Resources       []*Resource `json:"resources,omitempty"`
 
-	byMCP    map[string]*Tool
-	byAction map[string]*Tool
+	byMCP      map[string]*Tool
+	byAction   map[string]*Tool
+	byResource map[string]*Resource
 }
 
 // Load parses the embedded catalog, asserts that its protocolVersion matches
@@ -54,6 +69,7 @@ func Load() (*Catalog, error) {
 	}
 	c.byMCP = make(map[string]*Tool, len(c.Tools))
 	c.byAction = make(map[string]*Tool, len(c.Tools))
+	c.byResource = make(map[string]*Resource, len(c.Resources))
 	compiler := jsonschema.NewCompiler()
 	for _, t := range c.Tools {
 		if t.Action == "" {
@@ -85,6 +101,39 @@ func Load() (*Catalog, error) {
 			return nil, fmt.Errorf("catalog: compile schema for %q: %w", t.Action, err)
 		}
 		t.schema = compiled
+		if t.OutputSchema != nil {
+			outputSchemaJSON, err := json.Marshal(t.OutputSchema)
+			if err != nil {
+				return nil, fmt.Errorf("catalog: marshal output schema for %q: %w", t.Action, err)
+			}
+			outputResourceID := "catalog://" + t.Action + ".output.json"
+			if err := compiler.AddResource(outputResourceID, bytes.NewReader(outputSchemaJSON)); err != nil {
+				return nil, fmt.Errorf("catalog: add output schema for %q: %w", t.Action, err)
+			}
+			compiledOutput, err := compiler.Compile(outputResourceID)
+			if err != nil {
+				return nil, fmt.Errorf("catalog: compile output schema for %q: %w", t.Action, err)
+			}
+			t.outputSchema = compiledOutput
+		}
+	}
+	for _, r := range c.Resources {
+		if r.URI == "" || r.Action == "" {
+			return nil, fmt.Errorf("catalog: resource with empty uri/action")
+		}
+		if _, dup := c.byResource[r.URI]; dup {
+			return nil, fmt.Errorf("catalog: duplicate resource %q", r.URI)
+		}
+		if c.LookupAction(r.Action) == nil {
+			return nil, fmt.Errorf("catalog: resource %q references unknown action %q", r.URI, r.Action)
+		}
+		if r.MimeType == "" {
+			r.MimeType = "application/json"
+		}
+		if r.Payload == nil {
+			r.Payload = map[string]any{}
+		}
+		c.byResource[r.URI] = r
 	}
 	return &c, nil
 }
@@ -99,6 +148,11 @@ func (c *Catalog) LookupAction(action string) *Tool {
 	return c.byAction[action]
 }
 
+// LookupResource returns the resource registered under the given MCP URI, or nil.
+func (c *Catalog) LookupResource(uri string) *Resource {
+	return c.byResource[uri]
+}
+
 // MCPTools returns the tools that are exposed via MCP (i.e. mcpName != "").
 func (c *Catalog) MCPTools() []*Tool {
 	out := make([]*Tool, 0, len(c.Tools))
@@ -109,6 +163,11 @@ func (c *Catalog) MCPTools() []*Tool {
 		out = append(out, t)
 	}
 	return out
+}
+
+// MCPResources returns the read-only resource surface, in declaration order.
+func (c *Catalog) MCPResources() []*Resource {
+	return c.Resources
 }
 
 // Actions returns every action string in the catalog, in declaration order.
@@ -133,6 +192,22 @@ func (t *Tool) Validate(args map[string]any) error {
 		return domain.TypedError{
 			Code:      "INVALID_ARGS",
 			Message:   fmt.Sprintf("invalid arguments for %s: %s", t.MCPName, err),
+			Retryable: false,
+			Details:   map[string]any{"action": t.Action},
+		}
+	}
+	return nil
+}
+
+// ValidateOutput checks a handler result against the optional outputSchema.
+func (t *Tool) ValidateOutput(result map[string]any) error {
+	if t.outputSchema == nil {
+		return nil
+	}
+	if err := t.outputSchema.Validate(result); err != nil {
+		return domain.TypedError{
+			Code:      "INVALID_OUTPUT",
+			Message:   fmt.Sprintf("invalid output for %s: %s", t.MCPName, err),
 			Retryable: false,
 			Details:   map[string]any{"action": t.Action},
 		}

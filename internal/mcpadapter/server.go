@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,68 +26,6 @@ type Server struct {
 // New wires a server against a bridge and a loaded catalog.
 func New(logger *slog.Logger, bridge domain.Bridge, cat *catalog.Catalog) *Server {
 	return &Server{logger: logger, bridge: bridge, catalog: cat}
-}
-
-// MCP JSON-RPC 2.0 wire types.
-
-type rpcMsg struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *rpcError       `json:"error,omitempty"`
-}
-
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type toolCallParams struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments"`
-}
-
-type resourceReadParams struct {
-	URI string `json:"uri"`
-}
-
-type contentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type resourceListEntry struct {
-	URI         string `json:"uri"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	MimeType    string `json:"mimeType"`
-}
-
-func (s *Server) reply(enc *json.Encoder, id json.RawMessage, result any) {
-	_ = enc.Encode(rpcMsg{JSONRPC: "2.0", ID: id, Result: result})
-}
-
-func (s *Server) replyErr(enc *json.Encoder, id json.RawMessage, code int, msg string) {
-	_ = enc.Encode(rpcMsg{JSONRPC: "2.0", ID: id, Error: &rpcError{Code: code, Message: msg}})
-}
-
-// toolListEntry is the shape MCP clients expect from tools/list.
-type toolListEntry struct {
-	Name         string         `json:"name"`
-	Description  string         `json:"description"`
-	InputSchema  map[string]any `json:"inputSchema"`
-	OutputSchema map[string]any `json:"outputSchema,omitempty"`
-}
-
-func (s *Server) toolList() []toolListEntry {
-	tools := s.catalog.MCPTools()
-	out := make([]toolListEntry, len(tools))
-	for i, t := range tools {
-		out[i] = toolListEntry{Name: t.MCPName, Description: t.Description, InputSchema: t.InputSchema, OutputSchema: t.OutputSchema}
-	}
-	return out
 }
 
 // Serve reads JSON-RPC messages line-by-line from in and writes replies to out.
@@ -143,98 +80,4 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		}
 	}
 	return scanner.Err()
-}
-
-func (s *Server) resourceList() []resourceListEntry {
-	resources := s.catalog.MCPResources()
-	out := make([]resourceListEntry, len(resources))
-	for i, res := range resources {
-		out[i] = resourceListEntry{URI: res.URI, Name: res.Name, Description: res.Description, MimeType: res.MimeType}
-	}
-	return out
-}
-
-func (s *Server) handleResourcesRead(ctx context.Context, enc *json.Encoder, msg rpcMsg) {
-	var p resourceReadParams
-	if err := json.Unmarshal(msg.Params, &p); err != nil {
-		s.replyErr(enc, msg.ID, -32602, "invalid params: "+err.Error())
-		return
-	}
-	res := s.catalog.LookupResource(p.URI)
-	if res == nil {
-		s.replyErr(enc, msg.ID, -32602, fmt.Sprintf("unknown resource %q", p.URI))
-		return
-	}
-	resp, err := s.bridge.Call(ctx, domain.Request{Action: res.Action, Payload: cloneMap(res.Payload)})
-	if err != nil {
-		s.reply(enc, msg.ID, errorContent(err))
-		return
-	}
-	b, _ := json.Marshal(resp.Result)
-	s.reply(enc, msg.ID, map[string]any{
-		"contents": []map[string]any{{"uri": res.URI, "mimeType": "application/json", "text": string(b)}},
-	})
-}
-
-func cloneMap(in map[string]any) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func (s *Server) handleToolsCall(ctx context.Context, enc *json.Encoder, msg rpcMsg) {
-	var p toolCallParams
-	if err := json.Unmarshal(msg.Params, &p); err != nil {
-		s.replyErr(enc, msg.ID, -32602, "invalid params: "+err.Error())
-		return
-	}
-	tool := s.catalog.LookupMCP(p.Name)
-	if tool == nil {
-		s.reply(enc, msg.ID, map[string]any{
-			"content": []contentBlock{{Type: "text", Text: fmt.Sprintf("unknown tool %q", p.Name)}},
-			"isError": true,
-		})
-		return
-	}
-	args := p.Arguments
-	if args == nil {
-		args = map[string]any{}
-	}
-	if err := tool.Validate(args); err != nil {
-		s.reply(enc, msg.ID, errorContent(err))
-		return
-	}
-	resp, err := s.bridge.Call(ctx, domain.Request{Action: tool.Action, Payload: args})
-	if err != nil {
-		s.reply(enc, msg.ID, errorContent(err))
-		return
-	}
-	if err := tool.ValidateOutput(resp.Result); err != nil {
-		s.reply(enc, msg.ID, errorContent(err))
-		return
-	}
-	b, _ := json.Marshal(resp.Result)
-	s.reply(enc, msg.ID, map[string]any{
-		"content": []contentBlock{{Type: "text", Text: string(b)}},
-		"isError": false,
-	})
-}
-
-// errorContent renders any error (typed or plain) as an MCP isError reply.
-// Typed errors are surfaced as JSON so callers can inspect code/retryable.
-func errorContent(err error) map[string]any {
-	var te domain.TypedError
-	if errors.As(err, &te) {
-		b, _ := json.Marshal(te)
-		return map[string]any{
-			"content": []contentBlock{{Type: "text", Text: string(b)}},
-			"isError": true,
-		}
-	}
-	return map[string]any{
-		"content": []contentBlock{{Type: "text", Text: err.Error()}},
-		"isError": true,
-	}
 }

@@ -13,6 +13,9 @@
 #   SKIP_PLUGIN_ZIP=1 scripts/install.sh  # skip plugin zip packaging
 #   SKIP_BUILD=1 scripts/install.sh       # use existing requested binaries
 #
+# Named profiles are owned by scripts/install-profile.sh and Make targets.
+# This script still accepts direct SKIP_* flags for custom install shapes.
+#
 # Honored env vars:
 #   PREFIX          (default: $HOME/.local)
 #   BIN_DIR         (default: $PREFIX/bin)

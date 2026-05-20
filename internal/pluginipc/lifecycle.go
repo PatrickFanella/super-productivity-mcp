@@ -26,6 +26,12 @@ type requestLifecycle struct {
 	deadPath   string
 }
 
+type terminalObservation struct {
+	response domain.Response
+	err      error
+	done     bool
+}
+
 func newRequestLifecycle(cfg config.Config, fs FS, env Envelope) *requestLifecycle {
 	return &requestLifecycle{
 		cfg:        cfg,
@@ -53,7 +59,7 @@ func (l *requestLifecycle) run(ctx context.Context) (domain.Response, error) {
 	if err := l.fs.WriteJSONAtomic(l.inboxPath, l.env); err != nil {
 		return domain.Response{}, err
 	}
-	l.emitEvent("request.sent", map[string]any{"action": l.env.Action})
+	l.emitEvent(eventRequestSent, l.actionDetails(nil))
 
 	ticker := time.NewTicker(l.cfg.PollInterval)
 	defer ticker.Stop()
@@ -62,64 +68,72 @@ func (l *requestLifecycle) run(ctx context.Context) (domain.Response, error) {
 	for {
 		// Check for a terminal file before sleeping so a fast plugin
 		// reply doesn't pay one full poll interval of latency.
-		if resp, err, done := l.observe(); done {
-			return resp, err
+		if observed := l.observe(); observed.done {
+			return observed.response, observed.err
 		}
 
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.Canceled) {
-				l.emitEvent("request.canceled", map[string]any{"action": l.env.Action})
+				l.emitEvent(eventRequestCanceled, l.actionDetails(nil))
 				return domain.Response{}, ErrCanceled
 			}
 			// DeadlineExceeded falls through to ErrTimeout for symmetry
 			// with the overall-timeout path.
-			l.emitEvent("request.timeout", map[string]any{"action": l.env.Action})
+			l.emitEvent(eventRequestTimeout, l.actionDetails(nil))
 			return domain.Response{}, ErrTimeout
 		case <-ticker.C:
 		}
 
 		if time.Now().After(deadline) {
 			// Last observation before declaring the verdict.
-			if resp, err, done := l.observe(); done {
-				return resp, err
+			if observed := l.observe(); observed.done {
+				return observed.response, observed.err
 			}
 			// Stalled means the inbox file is still where we put it —
 			// the plugin never picked it up.
 			if _, err := os.Stat(l.inboxPath); err == nil {
-				l.emitEvent("request.stalled", map[string]any{"action": l.env.Action})
+				l.emitEvent(eventRequestStalled, l.actionDetails(nil))
 				return domain.Response{}, ErrPluginStalled
 			}
-			l.emitEvent("request.timeout", map[string]any{"action": l.env.Action})
+			l.emitEvent(eventRequestTimeout, l.actionDetails(nil))
 			return domain.Response{}, ErrTimeout
 		}
 	}
 }
 
-// observe checks for terminal files on disk. The third return is true iff
-// the lifecycle is over (success or terminal error).
-func (l *requestLifecycle) observe() (domain.Response, error, bool) {
+// observe checks for terminal files on disk. The done field is true iff the
+// lifecycle is over (success or terminal error).
+func (l *requestLifecycle) observe() terminalObservation {
 	if _, err := os.Stat(l.outboxPath); err == nil {
 		var resp Envelope
 		if err := l.fs.ReadJSON(l.outboxPath, &resp); err != nil {
-			return domain.Response{}, err, true
+			return terminalObservation{err: err, done: true}
 		}
 		_ = os.Remove(l.outboxPath)
 		if resp.Error != nil {
-			l.emitEvent("response.error", map[string]any{"action": l.env.Action, "code": resp.Error.Code})
-			return domain.Response{}, *resp.Error, true
+			l.emitEvent(eventResponseError, l.actionDetails(map[string]any{"code": resp.Error.Code}))
+			return terminalObservation{err: *resp.Error, done: true}
 		}
-		l.emitEvent("response.ok", map[string]any{"action": l.env.Action})
-		return domain.Response{Result: resp.Result}, nil, true
+		l.emitEvent(eventResponseOK, l.actionDetails(nil))
+		return terminalObservation{response: domain.Response{Result: resp.Result}, done: true}
 	}
 	if _, err := os.Stat(l.deadPath); err == nil {
 		// Deadletter only counts as a terminal signal when there is no
 		// outbox response; the JS plugin sometimes writes both, in
 		// which case the outbox check above wins.
-		l.emitEvent("request.deadletter", map[string]any{"action": l.env.Action})
-		return domain.Response{}, ErrDeadletter, true
+		l.emitEvent(eventRequestDeadletter, l.actionDetails(nil))
+		return terminalObservation{err: ErrDeadletter, done: true}
 	}
-	return domain.Response{}, nil, false
+	return terminalObservation{}
+}
+
+func (l *requestLifecycle) actionDetails(extra map[string]any) map[string]any {
+	details := map[string]any{"action": l.env.Action}
+	for k, v := range extra {
+		details[k] = v
+	}
+	return details
 }
 
 func (l *requestLifecycle) emitEvent(kind string, details map[string]any) {

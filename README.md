@@ -69,6 +69,8 @@ make install-plugin     # plugin zip only
 make install-skill      # agent skill bundle only
 ```
 
+Those profile targets are thin adapters over `scripts/install-profile.sh`, which owns the install matrix. Use `scripts/install.sh` directly only when you need custom `SKIP_*` combinations.
+
 Honored env vars: `PREFIX`, `BIN_DIR`, `SHARE_DIR`, `BUILD_DIR`, `DATA_DIR`, `SKILLS_DIR`, `SKIP_BUILD`, `SKIP_MCP`, `SKIP_QUICK_ADD`, `SKIP_SKILL`, `SKIP_DATA_DIR`, `SKIP_PLUGIN_ZIP`. Defaults install to `~/.local/bin` and `~/.local/share/super-productivity-mcp`.
 
 If you override `SHARE_DIR` outside the default prefix layout, `sp-quick-add --prompt popup` will only find its popup assets when you also set `SP_QUICK_ADD_POPUP_DIR` or pass `--popup-dir`.
@@ -199,83 +201,18 @@ If your popup assets live somewhere else because `SHARE_DIR` was customized, set
 
 ## Available tools
 
-| MCP tool | What it does |
-|----------|-------------|
-| `create_task` | Create a new task in Super Productivity. Supports short syntax in title: `#tag`, `+project`, `@due`, estimates like `30m` or `1h/2h`. |
-| `get_tasks` | List tasks from Super Productivity; supports active/archived/all sources when archived tasks API is available |
-| `get_archived_tasks` | List archived tasks when the plugin runtime supports archived task reads |
-| `get_current_context_tasks` | List tasks from Super Productivity's current context when available |
-| `create_task_with_subtasks` | Create a parent task and subtasks in one operation. Supports short syntax in parent and subtask titles. |
-| `get_task` | Get a specific task by ID |
-| `update_task` | Update task fields |
-| `complete_task` | Mark a task as done |
-| `uncomplete_task` | Unmark a task as done |
-| `archive_task` | Archive a task via optional local REST API; can explicitly fall back to marking done |
-| `restore_task` | Restore an archived task through the optional local REST API |
-| `delete_task` | Delete a task permanently when the Super Productivity plugin runtime supports `deleteTask` |
-| `add_time_to_task` | Add tracked time (milliseconds) |
-| `start_task` | Start time tracking on a task, stopping any other active task first |
-| `stop_task` | Stop the currently running time tracker; idempotent when nothing is running |
-| `get_current_task` | Get the currently tracked task, or null when no timer is running |
-| `get_worklog` | Summarize tracked task time for a date range |
-| `bulk_complete_tasks` | Mark multiple tasks complete with per-task partial success results |
-| `bulk_update_tasks` | Update multiple tasks with per-task partial success results and optional dry-run diffs |
-| `bulk_reschedule_tasks` | Update only schedule fields (`plannedAt`, `dueDay`, `timeEstimate`) for multiple tasks with dry-run diffs |
-| `clear_schedule_for_day` | Clear `plannedAt` for tasks planned on a local date, optionally clearing matching `dueDay` values |
-| `get_schedule_health` | Summarize schedule hygiene counts and concise task lists for cleanup planning |
-| `get_schedule_range` | Read planned tasks grouped by local date for a date range |
-| `find_stale_schedule` | Find active tasks planned or due before a cutoff date |
-| `find_unscheduled_active_tasks` | Find active tasks with no `plannedAt` and no `dueDay` using project/tag/estimate filters |
-| `make_planned_at` | Convert a local date/time and timezone into a `plannedAt` timestamp |
-| `auto_schedule_tasks` | Dry-run-first scheduler for unscheduled active tasks using daily capacity |
-| `compact_task_notes` | Replace oversized task notes with caller-provided compact notes using dry-run-first size diffs |
-| `plan_tasks_for_today` | Plan or unplan multiple tasks for today using `plannedAt` |
-| `add_tag_to_task` | Add one tag to a task without replacing existing tags; idempotent if already present |
-| `remove_tag_from_task` | Remove one tag from a task without replacing other tags; errors if absent |
-| `move_task_to_project` | Move a top-level task to a project; rejects subtasks |
-| `reorder_task` | Reorder tasks within a project or tag context |
-| `reorder_tasks` | Upstream-compatible alias for reordering tasks within a project, tag, or parent task context |
-| `get_projects` | List all projects |
-| `create_project` | Create a new project |
-| `update_project` | Update a project |
-| `get_tags` | List all tags |
-| `create_tag` | Create a new tag |
-| `update_tag` | Update a tag |
-| `show_notification` | Show a notification in Super Productivity |
-| `notify_user` | Send a Super Productivity notification through PluginAPI.notify when available |
-| `get_counters` | List all plugin counters when available |
-| `get_counter` | Read one plugin counter by id |
-| `set_counter` | Set one plugin counter by id |
-| `increment_counter` | Increment one plugin counter by id |
-| `decrement_counter` | Decrement one plugin counter by id |
-| `delete_counter` | Delete one plugin counter by id |
-| `bridge_health` | Check that the plugin bridge is alive |
-| `check_connection` | Upstream-compatible alias for checking whether Super Productivity and the plugin bridge are responding |
-| `debug_directories` | Show resolved plugin bridge IPC directories for diagnostics |
-| `bridge_capabilities` | List supported bridge actions |
+The MCP tool and resource surface is catalog-derived. Do not maintain a second
+manual list in this README.
 
-The full schema for each tool lives in [`internal/catalog/tools.json`](internal/catalog/tools.json). A generated Markdown view lives in [`docs/tools.md`](docs/tools.md); refresh it with `make generate-docs`.
+- Source of truth: [`internal/catalog/tools.json`](internal/catalog/tools.json)
+- Generated Markdown view: [`docs/tools.md`](docs/tools.md)
+- Refresh generated docs: `make generate-docs`
+- Drift check: `make check-catalogs check-docs`
 
 Safety notes:
 
 - Broad schedule and note writes are dry-run-first where possible. Use `dryRun:false` plus `confirmApply:true` only after inspecting returned diffs.
 - True archive/restore uses the optional Local REST API. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied, and `restore_task` is unavailable.
-
-## Available resources
-
-| MCP resource | What it returns |
-|--------------|-----------------|
-| `sp://projects` | All Super Productivity projects as JSON |
-| `sp://tags` | All Super Productivity tags as JSON |
-| `sp://tasks/active` | Incomplete active tasks as JSON |
-| `sp://tasks/archived` | Archived tasks when the plugin runtime supports archived task reads |
-| `sp://tasks/current-context` | Incomplete tasks from the current Super Productivity context when available |
-| `sp://tasks/today` | Incomplete tasks planned for today as JSON |
-| `sp://tasks/overdue` | Incomplete overdue tasks as JSON |
-| `sp://tasks/unscheduled` | Active top-level tasks with no planned date or due date as JSON |
-| `sp://schedule/today` | Incomplete tasks planned today with concise synthetic metadata as JSON |
-| `sp://schedule/health` | Schedule hygiene counts and concise task lists as JSON |
-| `sp://counters` | All Super Productivity plugin counters when available |
 
 ## Package the Super Productivity plugin
 

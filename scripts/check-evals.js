@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
+const contract = require("./catalog-contract");
 
 const rootDir = path.resolve(__dirname, "..");
 const evalPath = path.join(rootDir, "docs", "evals", "mcp-schedule-evals.xml");
-const catalogPath = path.join(rootDir, "internal", "catalog", "tools.json");
 
 function fail(message) {
   console.error(`check-evals: ${message}`);
@@ -12,9 +12,9 @@ function fail(message) {
 }
 
 const xml = fs.readFileSync(evalPath, "utf8");
-const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
-const toolNames = new Set(catalog.tools.map((tool) => tool.mcpName).filter(Boolean));
-const resourceUris = new Set((catalog.resources || []).map((resource) => resource.uri));
+const facts = contract.deriveCatalogFacts(contract.readCatalog());
+const toolNames = facts.mcpNameSet;
+const resourceUris = facts.resourceUriSet;
 const pairs = [...xml.matchAll(/<qa_pair>\s*<question>([\s\S]*?)<\/question>\s*<answer>([\s\S]*?)<\/answer>\s*<\/qa_pair>/g)]
   .map((match) => ({ question: match[1].trim(), answer: match[2].trim() }));
 

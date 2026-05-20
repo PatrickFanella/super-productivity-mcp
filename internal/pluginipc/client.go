@@ -19,6 +19,8 @@ type Client struct {
 	fs  FS
 }
 
+var _ domain.Bridge = (*Client)(nil)
+
 // NewClient ensures all data dirs exist and returns a ready bridge client.
 func NewClient(cfg config.Config) (*Client, error) {
 	fs := FS{}
@@ -36,15 +38,7 @@ func NewClient(cfg config.Config) (*Client, error) {
 // stall, or be canceled). All five outcomes map to typed errors except OK.
 func (c *Client) Call(ctx context.Context, req domain.Request) (domain.Response, error) {
 	id := "req_" + randomID()
-	env := Envelope{
-		ProtocolVersion: domain.ProtocolVersion,
-		ID:              id,
-		Type:            "request",
-		Action:          req.Action,
-		SentAt:          time.Now().UTC().Format(time.RFC3339),
-		Payload:         req.Payload,
-		Meta:            map[string]any{"client": "sp-mcp"},
-	}
+	env := newRequestEnvelope(id, req, time.Now())
 	lc := newRequestLifecycle(c.cfg, c.fs, env)
 	return lc.run(ctx)
 }

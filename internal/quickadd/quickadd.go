@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const DefaultPlaceholder = "Add task..."
+
 type PromptOptions struct {
 	Placeholder string
 }
@@ -39,11 +41,11 @@ type Result struct {
 }
 
 func Run(ctx context.Context, opts Options) (Result, error) {
-	title, err := titleFromOptions(ctx, opts)
+	title, err := resolveTitle(ctx, opts)
 	if err != nil {
 		return Result{}, err
 	}
-	title = strings.TrimSpace(title)
+	title = normalizeTitle(title)
 	if title == "" {
 		return Result{}, nil
 	}
@@ -69,7 +71,7 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 	return res, nil
 }
 
-func titleFromOptions(ctx context.Context, opts Options) (string, error) {
+func resolveTitle(ctx context.Context, opts Options) (string, error) {
 	if opts.Title != "" {
 		return opts.Title, nil
 	}
@@ -77,4 +79,8 @@ func titleFromOptions(ctx context.Context, opts Options) (string, error) {
 		return "", nil
 	}
 	return opts.Prompt.Prompt(ctx, PromptOptions{Placeholder: opts.Placeholder})
+}
+
+func normalizeTitle(title string) string {
+	return strings.TrimSpace(title)
 }

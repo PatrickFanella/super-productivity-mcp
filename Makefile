@@ -7,19 +7,19 @@ verify-release: test test-install-profiles package-plugin
 install: install-suite
 
 install-suite:
-	bash scripts/install.sh
+	bash scripts/install-profile.sh suite
 
 install-mcp:
-	SKIP_QUICK_ADD=1 SKIP_SKILL=1 SKIP_PLUGIN_ZIP=1 bash scripts/install.sh
+	bash scripts/install-profile.sh mcp
 
 install-quick-add:
-	SKIP_MCP=1 SKIP_SKILL=1 SKIP_PLUGIN_ZIP=1 bash scripts/install.sh
+	bash scripts/install-profile.sh quick-add
 
 install-plugin:
-	SKIP_MCP=1 SKIP_QUICK_ADD=1 SKIP_SKILL=1 SKIP_DATA_DIR=1 bash scripts/install.sh
+	bash scripts/install-profile.sh plugin
 
 install-skill:
-	SKIP_MCP=1 SKIP_QUICK_ADD=1 SKIP_PLUGIN_ZIP=1 SKIP_DATA_DIR=1 bash scripts/install.sh
+	bash scripts/install-profile.sh skill
 
 package-plugin:
 	bash scripts/package-plugin.sh
@@ -36,9 +36,13 @@ test-install-profiles:
 		prefix="$$TMP_ROOT/$$profile/prefix"; \
 		build="$$TMP_ROOT/$$profile/build"; \
 		data="$$TMP_ROOT/$$profile/data"; \
+		mkdir -p "$$build"; \
+		install -m 0755 /bin/true "$$build/sp-mcp"; \
+		install -m 0755 /bin/true "$$build/sp-quick-add"; \
 		env \
 			-u BIN_DIR \
 			-u SHARE_DIR \
+			-u SKILLS_DIR \
 			-u SKIP_BUILD \
 			-u SKIP_MCP \
 			-u SKIP_QUICK_ADD \
@@ -50,30 +54,30 @@ test-install-profiles:
 			SHARE_DIR="$$prefix/share/super-productivity-mcp" \
 			BUILD_DIR="$$build" \
 			DATA_DIR="$$data" \
-			"$$@" \
-			bash scripts/install.sh; \
+			SKIP_BUILD=1 \
+			bash scripts/install-profile.sh "$$profile" "$$@"; \
 	}; \
-	run_install full SKIP_SKILL=1 SKIP_PLUGIN_ZIP=1; \
-	test -x "$$TMP_ROOT/full/prefix/bin/sp-mcp"; \
-	test -x "$$TMP_ROOT/full/prefix/bin/sp-quick-add"; \
-	test -f "$$TMP_ROOT/full/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
-	test -d "$$TMP_ROOT/full/data/inbox"; \
-	run_install mcp SKIP_QUICK_ADD=1 SKIP_SKILL=1 SKIP_PLUGIN_ZIP=1; \
+	run_install suite --set SKIP_SKILL=1 --set SKIP_PLUGIN_ZIP=1; \
+	test -x "$$TMP_ROOT/suite/prefix/bin/sp-mcp"; \
+	test -x "$$TMP_ROOT/suite/prefix/bin/sp-quick-add"; \
+	test -f "$$TMP_ROOT/suite/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
+	test -d "$$TMP_ROOT/suite/data/inbox"; \
+	run_install mcp; \
 	test -x "$$TMP_ROOT/mcp/prefix/bin/sp-mcp"; \
 	test ! -e "$$TMP_ROOT/mcp/prefix/bin/sp-quick-add"; \
 	test ! -e "$$TMP_ROOT/mcp/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
 	test -d "$$TMP_ROOT/mcp/data/inbox"; \
-	run_install quick-add SKIP_MCP=1 SKIP_SKILL=1 SKIP_PLUGIN_ZIP=1; \
+	run_install quick-add; \
 	test ! -e "$$TMP_ROOT/quick-add/prefix/bin/sp-mcp"; \
 	test -x "$$TMP_ROOT/quick-add/prefix/bin/sp-quick-add"; \
 	test -f "$$TMP_ROOT/quick-add/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
 	test -d "$$TMP_ROOT/quick-add/data/inbox"; \
-	run_install skill SKIP_MCP=1 SKIP_QUICK_ADD=1 SKIP_PLUGIN_ZIP=1 SKIP_DATA_DIR=1 SKILLS_DIR="$$TMP_ROOT/skill/skills"; \
+	run_install skill --set SKILLS_DIR="$$TMP_ROOT/skill/skills"; \
 	test -f "$$TMP_ROOT/skill/skills/super-productivity-mcp/SKILL.md"; \
 	test -f "$$TMP_ROOT/skill/skills/super-productivity-maintenance/SKILL.md"; \
 	test -f "$$TMP_ROOT/skill/skills/super-productivity-planning/SKILL.md"; \
 	test ! -e "$$TMP_ROOT/skill/prefix/bin"; \
-	run_install plugin SKIP_MCP=1 SKIP_QUICK_ADD=1 SKIP_SKILL=1 SKIP_DATA_DIR=1; \
+	run_install plugin; \
 	set -- super-productivity-mcp-plugin-v*.zip; \
 	test -f "$$1"; \
 	test -f dist/plugin/super-productivity-mcp/manifest.json; \
@@ -107,5 +111,4 @@ sync-catalogs:
 # CI-safe drift check: fail if synced copies differ from the canonical catalog.
 # Keep this read-only so local uncommitted synced copies can still pass.
 check-catalogs:
-	cmp -s internal/catalog/tools.json plugin/bridge/tool-catalog.json
-	cmp -s internal/catalog/tools.json skill/super-productivity-mcp/data/tool-catalog.json
+	node scripts/check-catalog-contract.js

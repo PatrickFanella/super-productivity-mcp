@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
+const contract = require("./catalog-contract");
 
 const rootDir = path.resolve(__dirname, "..");
-const catalog = JSON.parse(fs.readFileSync(path.join(rootDir, "internal", "catalog", "tools.json"), "utf8"));
+const catalog = contract.readCatalog();
 const outPath = path.join(rootDir, "docs", "tools.md");
 const check = process.argv.includes("--check");
 

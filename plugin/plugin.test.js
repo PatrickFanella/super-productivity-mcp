@@ -3,15 +3,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const contract = require("../scripts/catalog-contract");
 
 const pluginPath = path.join(__dirname, "..", "plugin.js");
-const catalogPath = path.join(__dirname, "..", "internal", "catalog", "tools.json");
 
 test("root plugin entrypoint is browser-safe", () => {
   const src = fs.readFileSync(pluginPath, "utf8");
-  const runtimeSrc = src.replace(/`[^`]*`/gs, "``");
-  assert.doesNotMatch(runtimeSrc, /require\s*\(/);
-  assert.doesNotMatch(runtimeSrc, /process\s*\./);
+  assert.doesNotThrow(() => contract.assertRootPluginBrowserSafe(src));
   assert.match(src, /setTimeout\s*\(\s*init\s*,\s*500\s*\)/);
 });
 
@@ -63,12 +61,12 @@ test("node execution failures do not mark bridge ready", async () => {
 
 test("root plugin handlers match canonical catalog actions", () => {
   const src = fs.readFileSync(pluginPath, "utf8");
-  const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
-  const catalogActions = catalog.tools.map((tool) => tool.action).sort();
-  const handlersMatch = src.match(/const handlers = \{([\s\S]*?)\n  \};/);
-  assert.ok(handlersMatch, "handlers object not found");
-  const handlerActions = [...handlersMatch[1].matchAll(/\n\s{4}'([^']+)':/g)].map((m) => m[1]).sort();
-  assert.deepEqual(handlerActions, catalogActions);
+  assert.doesNotThrow(() => contract.assertRootPluginHandlerParity(src, contract.deriveCatalogFacts().actions));
+});
+
+test("root plugin handler projection matches modular bridge order", () => {
+  const src = fs.readFileSync(pluginPath, "utf8");
+  assert.doesNotThrow(() => contract.assertRootPluginProjection(src));
 });
 
 test("root plugin capabilities derive supported actions from handlers", () => {

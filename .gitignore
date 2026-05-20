@@ -38,4 +38,4 @@ go.work.sum
 # Local packaging output
 dist/
 super-productivity-mcp-plugin-v*.zip
-sp-quick-add
+/sp-quick-add

@@ -39,6 +39,29 @@ func newTestConfig(t *testing.T, timeout time.Duration) config.Config {
 	}
 }
 
+func TestNewRequestEnvelopeUsesIPCContract(t *testing.T) {
+	sentAt := time.Date(2026, 5, 19, 10, 30, 0, 0, time.FixedZone("offset", 2*60*60))
+	req := domain.Request{Action: "task.create", Payload: map[string]any{"title": "hello"}}
+
+	env := newRequestEnvelope("req_contract", req, sentAt)
+
+	if env.ProtocolVersion != domain.ProtocolVersion {
+		t.Fatalf("protocol version = %q", env.ProtocolVersion)
+	}
+	if env.ID != "req_contract" || env.Type != envelopeTypeRequest || env.Action != "task.create" {
+		t.Fatalf("unexpected envelope identity: %#v", env)
+	}
+	if env.SentAt != "2026-05-19T08:30:00Z" {
+		t.Fatalf("sentAt = %q", env.SentAt)
+	}
+	if env.Payload["title"] != "hello" {
+		t.Fatalf("payload = %#v", env.Payload)
+	}
+	if env.Meta["client"] != requestMetaClient {
+		t.Fatalf("meta = %#v", env.Meta)
+	}
+}
+
 // fakePlugin tails the inbox in a goroutine and produces a response, deadletter,
 // or simulates a stall depending on mode.
 type fakePluginMode int
@@ -76,8 +99,8 @@ func runFakePlugin(t *testing.T, cfg config.Config, mode fakePluginMode) {
 				resp := Envelope{
 					ProtocolVersion: domain.ProtocolVersion,
 					ID:              id,
-					Type:            "response",
-					Status:          "ok",
+					Type:            envelopeTypeResponse,
+					Status:          responseStatusOK,
 					Result:          map[string]any{"hello": "world"},
 				}
 				_ = (FS{}).WriteJSONAtomic(filepath.Join(cfg.OutboxDir, id+".json"), resp)
@@ -85,13 +108,13 @@ func runFakePlugin(t *testing.T, cfg config.Config, mode fakePluginMode) {
 				resp := Envelope{
 					ProtocolVersion: domain.ProtocolVersion,
 					ID:              id,
-					Type:            "response",
-					Status:          "error",
+					Type:            envelopeTypeResponse,
+					Status:          responseStatusError,
 					Error:           &domain.TypedError{Code: "TASK_NOT_FOUND", Message: "missing", Retryable: false},
 				}
 				_ = (FS{}).WriteJSONAtomic(filepath.Join(cfg.OutboxDir, id+".json"), resp)
 			case modeDeadletter:
-				bad := Envelope{ProtocolVersion: domain.ProtocolVersion, ID: id, Type: "request"}
+				bad := Envelope{ProtocolVersion: domain.ProtocolVersion, ID: id, Type: envelopeTypeRequest}
 				_ = (FS{}).WriteJSONAtomic(filepath.Join(cfg.DeadDir, id+".json"), bad)
 			}
 			_ = os.Remove(filepath.Join(cfg.ProcDir, name))
@@ -114,7 +137,7 @@ func TestClientOK(t *testing.T) {
 	if resp.Result["hello"] != "world" {
 		t.Fatalf("unexpected result: %#v", resp.Result)
 	}
-	assertEventKinds(t, cfg, "request.sent", "response.ok")
+	assertEventKinds(t, cfg, eventRequestSent, eventResponseOK)
 }
 
 func TestClientErrorEnvelope(t *testing.T) {
@@ -129,7 +152,7 @@ func TestClientErrorEnvelope(t *testing.T) {
 	if te.Code != "TASK_NOT_FOUND" {
 		t.Fatalf("got code %q", te.Code)
 	}
-	assertEventKinds(t, cfg, "request.sent", "response.error")
+	assertEventKinds(t, cfg, eventRequestSent, eventResponseError)
 }
 
 func TestClientDeadletter(t *testing.T) {
@@ -141,7 +164,7 @@ func TestClientDeadletter(t *testing.T) {
 	if !errors.As(err, &te) {
 		t.Fatalf("expected TypedError, got %v", err)
 	}
-	if te.Code != "DEADLETTER" {
+	if te.Code != errorCodeDeadletter {
 		t.Fatalf("got code %q", te.Code)
 	}
 }
@@ -178,7 +201,7 @@ func TestClientPluginStalled(t *testing.T) {
 	if !errors.As(err, &te) {
 		t.Fatalf("expected TypedError, got %v", err)
 	}
-	if te.Code != "PLUGIN_STALLED" {
+	if te.Code != errorCodePluginStalled {
 		t.Fatalf("got code %q", te.Code)
 	}
 }
@@ -206,7 +229,7 @@ func TestClientTimeoutWhenNoResponse(t *testing.T) {
 	if !errors.As(err, &te) {
 		t.Fatalf("expected TypedError, got %v", err)
 	}
-	if te.Code != "TIMEOUT" {
+	if te.Code != errorCodeTimeout {
 		t.Fatalf("got code %q", te.Code)
 	}
 }
@@ -224,7 +247,7 @@ func TestClientCanceled(t *testing.T) {
 	if !errors.As(err, &te) {
 		t.Fatalf("expected TypedError, got %v", err)
 	}
-	if te.Code != "CANCELED" {
+	if te.Code != errorCodeCanceled {
 		t.Fatalf("got code %q", te.Code)
 	}
 }

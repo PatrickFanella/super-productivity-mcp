@@ -24,7 +24,8 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 - If tools/resources are missing: inspect `tools/list`, `resources/list`, and adapter registration.
 - If tool calls time out: check `SP_MCP_DATA_DIR` routing and plugin bridge outbox responses.
 - If behavior differs across clients: compare per-client MCP config wiring.
-- Current parity surface is 33 tools plus 4 resources: `sp://projects`, `sp://tags`, `sp://tasks/today`, `sp://tasks/overdue`.
+- Current parity surface is catalog-derived. Read `data/tool-catalog.json`
+  instead of trusting hard-coded tool/resource counts.
 
 ## The States
 
@@ -54,13 +55,13 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 **Symptoms:** Server connects but tools/resources are absent/misaligned; client calls unknown tool names or cannot read expected `sp://` resources.
 **Key Questions:**
 - Does `tools/list` include expected names?
-- Does `resources/list` include `sp://projects`, `sp://tags`, `sp://tasks/today`, and `sp://tasks/overdue`?
+- Does `resources/list` include the resource URIs declared in `data/tool-catalog.json`?
 - Do `mcpName` and `action` in `internal/catalog/tools.json` match the JS handler keys in `plugin/bridge/actions/`?
 - Are schemas valid JSON Schema objects?
 **Interventions:**
 - Compare reported tool names against the canonical catalog (`internal/catalog/tools.json`, mirrored at `plugin/bridge/tool-catalog.json` and `skill/super-productivity-mcp/data/tool-catalog.json`).
 - Edit the Go-side catalog only; run `make sync-catalogs` to propagate.
-- Resource definitions live in `internal/mcpadapter/server.go`; resource reads dispatch through normal bridge actions.
+- Resource definitions live in the catalog; resource reads dispatch through normal bridge actions.
 
 ### SPM6: Catalog Drift
 **Symptoms:** `make check-catalogs` fails in CI, plugin throws "Tool catalog declares actions without handlers" or "Handlers not declared in tool catalog" at load time, or schema validation rejects arguments the JS handler actually accepts.
@@ -114,7 +115,7 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 
 ### For Runtime Failures
 - Does `tools/list` return all expected tools?
-- Does `resources/list` return all 4 expected resources?
+- Does `resources/list` return the resources declared in `data/tool-catalog.json`?
 - Does a simple tool call (`bridge_health`) succeed?
 - Do compatibility diagnostics (`check_connection`, `debug_directories`) succeed after plugin install?
 - Are inbox/outbox files being created and consumed?

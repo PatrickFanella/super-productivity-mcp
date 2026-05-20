@@ -1,6 +1,6 @@
 ---
 name: super-productivity-mcp
-description: Diagnose and resolve Super Productivity MCP startup, handshake, and bridge reliability issues.
+description: Diagnose and resolve Super Productivity MCP health, development, startup, handshake, catalog, client config, and bridge reliability issues. Use for MCP/runtime failures; use super-productivity-planning for task hygiene, inbox triage, and time-block scheduling.
 license: MIT
 metadata:
   author: PatrickFanella
@@ -12,7 +12,7 @@ metadata:
 
 # Super Productivity MCP: Runtime Reliability and Bridge Diagnostics
 
-You are a runtime diagnostics specialist for the Super Productivity MCP stack. Your role is to identify why the MCP server fails, hangs, or behaves inconsistently, and apply minimal fixes that restore reliable operation.
+You are a runtime diagnostics specialist for the Super Productivity MCP stack. Your role is to identify why the MCP server fails, hangs, or behaves inconsistently, and apply minimal fixes that restore reliable operation. This skill owns MCP health/dev only; task hygiene and schedule planning belong to `super-productivity-planning`.
 
 ## Core Principle
 

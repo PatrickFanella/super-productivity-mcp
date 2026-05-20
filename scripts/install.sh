@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install super-productivity-mcp: build the Go binary, set up the IPC data
-# directory, install the skill, package the SP plugin zip, and print MCP
+# directory, install bundled skills, package the SP plugin zip, and print MCP
 # client + plugin instructions.
 #
 # Usage:
@@ -9,7 +9,7 @@
 #   BUILD_DIR=/tmp/build scripts/install.sh  # build binaries outside the repo root
 #   SKIP_MCP=1 scripts/install.sh         # skip MCP binary build/install
 #   SKIP_QUICK_ADD=1 scripts/install.sh   # skip quick-add binary and popup assets
-#   SKIP_SKILL=1 scripts/install.sh       # skip skill install
+#   SKIP_SKILL=1 scripts/install.sh       # skip bundled skill install
 #   SKIP_PLUGIN_ZIP=1 scripts/install.sh  # skip plugin zip packaging
 #   SKIP_BUILD=1 scripts/install.sh       # use existing requested binaries
 #
@@ -115,20 +115,27 @@ if [[ -z "${SKIP_DATA_DIR:-}" ]]; then
     "$DATA_DIR/deadletter"
 fi
 
-# 4. Install the skill snapshot.
+# 4. Install the skill snapshots.
 if [[ -z "${SKIP_SKILL:-}" ]]; then
-  SKILL_DEST="$SKILLS_DIR/super-productivity-mcp"
-  log "Installing skill to $SKILL_DEST"
-  mkdir -p "$SKILL_DEST"
-  # Mirror the skill folder. Use rsync if present for cleaner deletes; fall
-  # back to cp -R.
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$ROOT_DIR/skill/super-productivity-mcp/" "$SKILL_DEST/"
-  else
-    rm -rf "$SKILL_DEST"
+  log "Installing skills to $SKILLS_DIR"
+  mkdir -p "$SKILLS_DIR"
+  for SKILL_SRC in "$ROOT_DIR"/skill/*; do
+    [[ -f "$SKILL_SRC/SKILL.md" ]] || continue
+    SKILL_NAME="$(basename "$SKILL_SRC")"
+    SKILL_DEST="$SKILLS_DIR/$SKILL_NAME"
+    log "Installing skill $SKILL_NAME to $SKILL_DEST"
     mkdir -p "$SKILL_DEST"
-    cp -R "$ROOT_DIR/skill/super-productivity-mcp/." "$SKILL_DEST/"
-  fi
+    # Mirror the skill folder. Use rsync if present for cleaner deletes; fall
+    # back to cp -R.
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$SKILL_SRC/" "$SKILL_DEST/"
+    else
+      rm -rf "$SKILL_DEST"
+      mkdir -p "$SKILL_DEST"
+      cp -R "$SKILL_SRC/." "$SKILL_DEST/"
+    fi
+  done
+  SKILL_SUMMARY="$SKILLS_DIR"
 fi
 
 # 5. Package the Super Productivity plugin zip.
@@ -143,7 +150,7 @@ MCP_SUMMARY="<skipped>"
 QUICK_ADD_SUMMARY="<skipped>"
 POPUP_SUMMARY="<skipped>"
 DATA_DIR_SUMMARY="$DATA_DIR"
-SKILL_SUMMARY="${SKILL_DEST:-<skipped>}"
+SKILL_SUMMARY="${SKILL_SUMMARY:-<skipped>}"
 
 if [[ -n "${SKIP_DATA_DIR:-}" ]]; then
   DATA_DIR_SUMMARY="<skipped>"

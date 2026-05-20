@@ -70,6 +70,8 @@ test-install-profiles:
 	test -d "$$TMP_ROOT/quick-add/data/inbox"; \
 	run_install skill SKIP_MCP=1 SKIP_QUICK_ADD=1 SKIP_PLUGIN_ZIP=1 SKIP_DATA_DIR=1 SKILLS_DIR="$$TMP_ROOT/skill/skills"; \
 	test -f "$$TMP_ROOT/skill/skills/super-productivity-mcp/SKILL.md"; \
+	test -f "$$TMP_ROOT/skill/skills/super-productivity-maintenance/SKILL.md"; \
+	test -f "$$TMP_ROOT/skill/skills/super-productivity-planning/SKILL.md"; \
 	test ! -e "$$TMP_ROOT/skill/prefix/bin"; \
 	run_install plugin SKIP_MCP=1 SKIP_QUICK_ADD=1 SKIP_SKILL=1 SKIP_DATA_DIR=1; \
 	set -- super-productivity-mcp-plugin-v*.zip; \

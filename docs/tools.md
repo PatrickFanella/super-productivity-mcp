@@ -13,6 +13,9 @@ Generated from `internal/catalog/tools.json`. Do not edit by hand; run `make gen
 | `get_current_context_tasks` | `task.listCurrentContext` | List tasks from Super Productivity's current context when PluginAPI.getCurrentContextTasks is available. |
 | `get_task` | `task.get` | Get a specific task by ID |
 | `update_task` | `task.update` | Update an existing task |
+| `set_task_recurrence` | `task.setRecurrence` | Make an existing Super Productivity task recurring by creating and linking a TaskRepeatCfg. Requires a Super Productivity build that allows repeat cfg plugin actions. |
+| `update_task_recurrence` | `task.updateRecurrence` | Update the repeat config linked to an existing recurring task. Requires the task to already have repeatCfgId. |
+| `delete_task_recurrence` | `task.deleteRecurrence` | Remove recurrence from a recurring task by deleting its TaskRepeatCfg and unlinking task instances. |
 | `complete_task` | `task.complete` | Mark a task as done |
 | `uncomplete_task` | `task.uncomplete` | Unmark a task as done |
 | `archive_task` | `task.archive` | True-archive a task via optional Local REST. Requires SP_LOCAL_REST_URL/SUPER_PRODUCTIVITY_REST_URL; without REST this errors unless allowDoneFallback:true explicitly accepts marking the task done instead. |

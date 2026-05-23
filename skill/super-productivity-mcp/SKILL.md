@@ -74,6 +74,18 @@ You are a runtime diagnostics specialist for the Super Productivity MCP stack. Y
 - Add or remove the handler in `plugin/bridge/actions/` to match the catalog.
 - Update the schema (Go-side SSOT) to use the JS-canonical field names.
 
+### SPM7: Recurrence Automation
+**Symptoms:** recurrence tools are missing, recurrence calls fail with unsupported action, or `update_task_recurrence` opens a confirmation dialog.
+**Key Questions:**
+- Does `tools/list` include `set_task_recurrence`, `update_task_recurrence`, and `delete_task_recurrence`?
+- Does `bridge_capabilities` include `task.setRecurrence`, `task.updateRecurrence`, and `task.deleteRecurrence`?
+- Is the installed Super Productivity build patched to allow repeat-config plugin actions?
+- Did the caller pass `isAskToUpdateAllTaskInstances:true`?
+**Interventions:**
+- Use the recurrence tools only with the patched Super Productivity build.
+- For non-interactive automation, omit `isAskToUpdateAllTaskInstances` or pass `false`; `true` intentionally triggers Super Productivity's UI confirmation for updating existing instances.
+- Verify recurrence by reading the task back and checking `repeatCfgId`, `dueDay`, and `plannedAt`.
+
 ### SPM4: Bridge Round-Trip Timeout
 **Symptoms:** `tools/call` executes but returns timeout/internal errors; requests accumulate in `inbox/`.
 **Key Questions:**

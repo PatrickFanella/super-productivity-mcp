@@ -240,6 +240,84 @@ test("task.bulkReschedule only updates schedule fields", async () => {
   assert.equal(out.results[1].success, false);
 });
 
+test("task.setRecurrence dispatches addTaskRepeatCfgToTask with persistent meta", async () => {
+  const dispatched = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1", title: "Water plants", projectId: "proj-1", tagIds: ["tag-1"], notes: "keep alive" }],
+    dispatchAction: async (action) => dispatched.push(action),
+  };
+
+  const out = await taskActions["task.setRecurrence"]({
+    taskId: "task-1",
+    recurrence: {
+      repeatCycle: "WEEKLY",
+      repeatEvery: 1,
+      quickSetting: "WEEKLY_CURRENT_WEEKDAY",
+      monday: true,
+      startTime: "09:00",
+      waitForCompletion: true,
+      skipOverdue: true,
+    },
+  });
+
+  assert.equal(out.created, true);
+  assert.equal(typeof out.repeatCfgId, "string");
+  assert.equal(dispatched.length, 1);
+  assert.equal(dispatched[0].type, "[TaskRepeatCfg][Task] Add TaskRepeatCfg to Task");
+  assert.equal(dispatched[0].taskId, "task-1");
+  assert.equal(dispatched[0].taskRepeatCfg.id, out.repeatCfgId);
+  assert.equal(dispatched[0].taskRepeatCfg.projectId, "proj-1");
+  assert.equal(dispatched[0].taskRepeatCfg.repeatCycle, "WEEKLY");
+  assert.equal(dispatched[0].taskRepeatCfg.monday, true);
+  assert.equal(dispatched[0].taskRepeatCfg.waitForCompletion, true);
+  assert.equal(dispatched[0].taskRepeatCfg.skipOverdue, true);
+  assert.deepEqual(dispatched[0].meta, {
+    isPersistent: true,
+    entityType: "TASK_REPEAT_CFG",
+    entityId: out.repeatCfgId,
+    opType: "CRT",
+  });
+});
+
+test("task.updateRecurrence dispatches updateTaskRepeatCfg for task repeatCfgId", async () => {
+  const dispatched = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1", title: "Water plants", repeatCfgId: "repeat-1" }],
+    dispatchAction: async (action) => dispatched.push(action),
+  };
+
+  const out = await taskActions["task.updateRecurrence"]({
+    taskId: "task-1",
+    changes: { repeatCycle: "DAILY", repeatEvery: 2, isPaused: true },
+    isAskToUpdateAllTaskInstances: true,
+  });
+
+  assert.deepEqual(out, { repeatCfgId: "repeat-1", updated: true });
+  assert.deepEqual(dispatched[0], {
+    type: "[TaskRepeatCfg] Update TaskRepeatCfg",
+    taskRepeatCfg: { id: "repeat-1", changes: { repeatCycle: "DAILY", repeatEvery: 2, isPaused: true } },
+    isAskToUpdateAllTaskInstances: true,
+    meta: { isPersistent: true, entityType: "TASK_REPEAT_CFG", entityId: "repeat-1", opType: "UPD" },
+  });
+});
+
+test("task.deleteRecurrence dispatches shared delete action for task repeatCfgId", async () => {
+  const dispatched = [];
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "task-1", title: "Water plants", repeatCfgId: "repeat-1" }],
+    dispatchAction: async (action) => dispatched.push(action),
+  };
+
+  const out = await taskActions["task.deleteRecurrence"]({ taskId: "task-1" });
+
+  assert.deepEqual(out, { repeatCfgId: "repeat-1", deleted: true });
+  assert.deepEqual(dispatched[0], {
+    type: "[Task Shared] deleteTaskRepeatCfg",
+    taskRepeatCfgId: "repeat-1",
+    meta: { isPersistent: true, entityType: "TASK_REPEAT_CFG", entityId: "repeat-1", opType: "DEL" },
+  });
+});
+
 test("task.clearScheduleForDay supports dry-run and updates", async () => {
   const plannedAt = new Date(2026, 4, 14, 9).getTime();
   const updates = [];

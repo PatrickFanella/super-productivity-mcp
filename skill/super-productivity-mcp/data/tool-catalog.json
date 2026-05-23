@@ -188,6 +188,152 @@
       }
     },
     {
+      "mcpName": "set_task_recurrence",
+      "action": "task.setRecurrence",
+      "description": "Make an existing Super Productivity task recurring by creating and linking a TaskRepeatCfg. Requires a Super Productivity build that allows repeat cfg plugin actions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "recurrence": {
+            "type": "object",
+            "properties": {
+              "repeatCycle": { "type": "string", "enum": ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] },
+              "repeat_cycle": { "type": "string", "enum": ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] },
+              "repeatEvery": { "type": "integer", "minimum": 1 },
+              "repeat_every": { "type": "integer", "minimum": 1 },
+              "quickSetting": { "type": "string", "enum": ["DAILY", "WEEKLY_CURRENT_WEEKDAY", "MONTHLY_CURRENT_DATE", "MONTHLY_FIRST_DAY", "MONTHLY_LAST_DAY", "MONTHLY_NTH_WEEKDAY", "MONDAY_TO_FRIDAY", "YEARLY_CURRENT_DATE", "CUSTOM"] },
+              "quick_setting": { "type": "string", "enum": ["DAILY", "WEEKLY_CURRENT_WEEKDAY", "MONTHLY_CURRENT_DATE", "MONTHLY_FIRST_DAY", "MONTHLY_LAST_DAY", "MONTHLY_NTH_WEEKDAY", "MONDAY_TO_FRIDAY", "YEARLY_CURRENT_DATE", "CUSTOM"] },
+              "startTime": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+              "start_time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+              "startDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "start_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "monday": { "type": "boolean" },
+              "tuesday": { "type": "boolean" },
+              "wednesday": { "type": "boolean" },
+              "thursday": { "type": "boolean" },
+              "friday": { "type": "boolean" },
+              "saturday": { "type": "boolean" },
+              "sunday": { "type": "boolean" },
+              "isPaused": { "type": "boolean" },
+              "is_paused": { "type": "boolean" },
+              "waitForCompletion": { "type": "boolean" },
+              "wait_for_completion": { "type": "boolean" },
+              "skipOverdue": { "type": "boolean" },
+              "skip_overdue": { "type": "boolean" },
+              "repeatFromCompletionDate": { "type": "boolean" },
+              "repeat_from_completion_date": { "type": "boolean" },
+              "defaultEstimate": { "type": "integer", "minimum": 0 },
+              "default_estimate": { "type": "integer", "minimum": 0 },
+              "title": { "type": ["string", "null"] },
+              "notes": { "type": ["string", "null"] },
+              "tagIds": { "type": "array", "items": { "type": "string" } },
+              "tag_ids": { "type": "array", "items": { "type": "string" } },
+              "projectId": { "type": ["string", "null"] },
+              "project_id": { "type": ["string", "null"] },
+              "shouldInheritSubtasks": { "type": "boolean" },
+              "should_inherit_subtasks": { "type": "boolean" },
+              "disableAutoUpdateSubtasks": { "type": "boolean" },
+              "disable_auto_update_subtasks": { "type": "boolean" }
+            },
+            "required": ["repeatCycle"]
+          }
+        },
+        "required": ["taskId", "recurrence"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "repeatCfgId": { "type": "string" },
+          "created": { "type": "boolean" }
+        },
+        "required": ["repeatCfgId", "created"]
+      }
+    },
+    {
+      "mcpName": "update_task_recurrence",
+      "action": "task.updateRecurrence",
+      "description": "Update the repeat config linked to an existing recurring task. Requires the task to already have repeatCfgId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" },
+          "changes": {
+            "type": "object",
+            "properties": {
+              "repeatCycle": { "type": "string", "enum": ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] },
+              "repeat_cycle": { "type": "string", "enum": ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] },
+              "repeatEvery": { "type": "integer", "minimum": 1 },
+              "repeat_every": { "type": "integer", "minimum": 1 },
+              "quickSetting": { "type": "string", "enum": ["DAILY", "WEEKLY_CURRENT_WEEKDAY", "MONTHLY_CURRENT_DATE", "MONTHLY_FIRST_DAY", "MONTHLY_LAST_DAY", "MONTHLY_NTH_WEEKDAY", "MONDAY_TO_FRIDAY", "YEARLY_CURRENT_DATE", "CUSTOM"] },
+              "quick_setting": { "type": "string", "enum": ["DAILY", "WEEKLY_CURRENT_WEEKDAY", "MONTHLY_CURRENT_DATE", "MONTHLY_FIRST_DAY", "MONTHLY_LAST_DAY", "MONTHLY_NTH_WEEKDAY", "MONDAY_TO_FRIDAY", "YEARLY_CURRENT_DATE", "CUSTOM"] },
+              "startTime": { "type": ["string", "null"], "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+              "start_time": { "type": ["string", "null"], "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+              "startDate": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "start_date": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "monday": { "type": "boolean" },
+              "tuesday": { "type": "boolean" },
+              "wednesday": { "type": "boolean" },
+              "thursday": { "type": "boolean" },
+              "friday": { "type": "boolean" },
+              "saturday": { "type": "boolean" },
+              "sunday": { "type": "boolean" },
+              "isPaused": { "type": "boolean" },
+              "is_paused": { "type": "boolean" },
+              "waitForCompletion": { "type": "boolean" },
+              "wait_for_completion": { "type": "boolean" },
+              "skipOverdue": { "type": "boolean" },
+              "skip_overdue": { "type": "boolean" },
+              "repeatFromCompletionDate": { "type": "boolean" },
+              "repeat_from_completion_date": { "type": "boolean" },
+              "defaultEstimate": { "type": ["integer", "null"], "minimum": 0 },
+              "default_estimate": { "type": ["integer", "null"], "minimum": 0 },
+              "title": { "type": ["string", "null"] },
+              "notes": { "type": ["string", "null"] },
+              "tagIds": { "type": "array", "items": { "type": "string" } },
+              "tag_ids": { "type": "array", "items": { "type": "string" } },
+              "projectId": { "type": ["string", "null"] },
+              "project_id": { "type": ["string", "null"] }
+            }
+          },
+          "isAskToUpdateAllTaskInstances": { "type": "boolean" },
+          "is_ask_to_update_all_task_instances": { "type": "boolean" }
+        },
+        "required": ["taskId", "changes"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "repeatCfgId": { "type": "string" },
+          "updated": { "type": "boolean" }
+        },
+        "required": ["repeatCfgId", "updated"]
+      }
+    },
+    {
+      "mcpName": "delete_task_recurrence",
+      "action": "task.deleteRecurrence",
+      "description": "Remove recurrence from a recurring task by deleting its TaskRepeatCfg and unlinking task instances.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string" },
+          "task_id": { "type": "string" }
+        },
+        "required": ["taskId"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "repeatCfgId": { "type": "string" },
+          "deleted": { "type": "boolean" }
+        },
+        "required": ["repeatCfgId", "deleted"]
+      }
+    },
+    {
       "mcpName": "complete_task",
       "action": "task.complete",
       "description": "Mark a task as done",

@@ -51,6 +51,26 @@ installable artifacts.
   `cmd/sp-quick-add` should stay a composition root for flags and runtime
   adapters.
 
+## Agent Scheduling Workflow Baseline
+
+When this suite is used for broad Super Productivity task overhaul, preserve the
+current operating-system rules unless the user overrides them:
+
+- Use title form `[Category] Task: detail`. Do not encode frequency in the title
+  when recurrence already carries it.
+- Keep project/backlog tasks outside core framework projects unscheduled unless
+  they are explicitly tagged `Active` or the user asks to schedule that project.
+- General work blocks are allowed and useful. Specific tasks may be scheduled on
+  top of them when they are the chosen concrete work for that block.
+- Spread weekly/monthly/quarterly reviews across the week. Do not put everything
+  on Monday or the first Monday unless the task truly benefits from early-week
+  placement.
+- Maintain real weekend anchors for reset, chores, low-pressure creative capture,
+  relationships, review, and shutdown. Weekend schedules should be lighter than
+  weekday schedules.
+- Add useful notes to active tasks. Each note should name the done state, scope,
+  or next action so the task can be executed later without reconstructing intent.
+
 ## Architecture Direction
 
 Prefer deep modules with small, stable interfaces and localized implementations:

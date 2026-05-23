@@ -1,6 +1,7 @@
 const create = require("./task-create");
 const read = require("./task-read");
 const mutate = require("./task-mutate");
+const recurrence = require("./task-recurrence");
 const schedule = require("./task-schedule");
 const organize = require("./task-organize");
 
@@ -12,6 +13,9 @@ module.exports = {
   "task.listCurrentContext": read.taskCurrentContextList,
   "task.get": read.taskGet,
   "task.update": mutate.taskUpdate,
+  "task.setRecurrence": recurrence.taskSetRecurrence,
+  "task.updateRecurrence": recurrence.taskUpdateRecurrence,
+  "task.deleteRecurrence": recurrence.taskDeleteRecurrence,
   "task.complete": mutate.taskComplete,
   "task.uncomplete": mutate.taskUncomplete,
   "task.archive": mutate.taskArchive,

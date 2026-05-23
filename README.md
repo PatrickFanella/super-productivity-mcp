@@ -213,6 +213,7 @@ Safety notes:
 
 - Broad schedule and note writes are dry-run-first where possible. Use `dryRun:false` plus `confirmApply:true` only after inspecting returned diffs.
 - True archive/restore uses the optional Local REST API. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied, and `restore_task` is unavailable.
+- Recurrence tools require a Super Productivity build whose plugin sandbox allows repeat-config actions. For non-interactive automation, call `update_task_recurrence` without `isAskToUpdateAllTaskInstances` or set it to `false`; setting it to `true` intentionally asks Super Productivity to show the UI confirmation for updating existing task instances.
 
 ## Package the Super Productivity plugin
 

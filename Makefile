@@ -88,7 +88,7 @@ test-go:
 
 test-js:
 	node --check quickadd-popup/popup.js
-	node --test plugin/**/*.test.js plugin/bridge/**/*.test.js
+	node --test $$(find plugin -type f -name '*.test.js' -print | sort)
 
 test-e2e:
 	go test ./test/e2e -v

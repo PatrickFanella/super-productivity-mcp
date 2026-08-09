@@ -24,14 +24,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Check catalog sync
-        run: make check-catalogs
-
-      - name: Go tests
-        run: go test ./...
-
-      - name: JS bridge tests
-        run: node --test plugin/bridge/**/*.test.js
-
-      - name: E2E tests
-        run: go test ./test/e2e -v
+      # Keep CI aligned with the documented local gate: catalog + generated
+      # documentation drift, Go, JavaScript, end-to-end, and eval checks.
+      - name: Full verification suite
+        run: make test

@@ -1,6 +1,16 @@
 # super-productivity-mcp
 
-An integrated Super Productivity automation suite with a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server, a desktop quick-add launcher, a Super Productivity plugin bridge, and an agent skill bundle.
+**A local-first productivity integration that lets AI clients work safely with Super Productivity.** It combines a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server, desktop quick-add launcher, in-app plugin bridge, and agent skill bundle into one versioned suite.
+
+| Challenge | Outcome |
+| --- | --- |
+| Give AI clients useful task controls without exposing a hosted task service. | A Go MCP server and a Super Productivity plugin communicate through explicit, file-based IPC. |
+| Make fast capture practical outside an AI client. | `sp-quick-add` adds desktop task capture through the same bridge and safety model. |
+| Keep a growing tool surface dependable. | A single catalog drives the server, plugin, skill bundle, generated docs, and CI drift checks. |
+
+The suite is deliberately **local-first**: task data stays in the user-controlled Super Productivity installation. High-impact scheduling and write operations are dry-run/confirmation oriented, and true archive/restore requires an explicitly configured local API.
+
+**Release readiness:** the repository ships as one compatibility unit (MCP server, plugin, quick-add, and skills). Run `make verify-release` before publishing the initial `v0.1.0` release. Licensed under [MIT](LICENSE).
 
 With this suite you can ask your AI assistant to create tasks, list projects, add tracked time, and more. You can also use `sp-quick-add` to add tasks from your desktop without opening an AI client.
 

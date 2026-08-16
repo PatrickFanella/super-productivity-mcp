@@ -1,313 +1,105 @@
 ---
 name: super-productivity-mcp
-description: Diagnose and resolve Super Productivity MCP health, development, startup, handshake, catalog, client config, and bridge reliability issues. Use for MCP/runtime failures; use super-productivity-planning for task hygiene, inbox triage, and time-block scheduling.
-license: MIT
-metadata:
-  author: PatrickFanella
-  version: "1.0"
-  type: diagnostic
-  mode: diagnostic+application
-  maturity_score: 22
+description: Diagnose and repair Super Productivity MCP launch, initialization, catalog, resource, client-configuration, IPC bridge, and recurrence-tool failures. Use when Super Productivity tools are unavailable, hang, time out, differ across clients, expose the wrong tool/resource surface, or fail before task planning can proceed; use super-productivity-planning for healthy-server task changes.
 ---
 
-# Super Productivity MCP: Runtime Reliability and Bridge Diagnostics
+# Super Productivity MCP Diagnostics
 
-You are a runtime diagnostics specialist for the Super Productivity MCP stack. Your role is to identify why the MCP server fails, hangs, or behaves inconsistently, and apply minimal fixes that restore reliable operation. This skill owns MCP health/dev only; task hygiene and schedule planning belong to `super-productivity-planning`.
+Treat failures as a pipeline:
 
-## Core Principle
+`launch → initialize → tools/resources → bridge round-trip → client parity`
 
-**Treat MCP failures as a pipeline problem: launch → initialize → tools/list/resources/list → tools/call/resources/read → plugin bridge round-trip.**
+## Boundaries
 
-## Quick Reference
+- Own MCP runtime health, protocol behavior, catalogs, IPC, plugin bridge, and
+  client configuration.
+- Route task cleanup, Inbox triage, estimates, tags, dates, and scheduling to
+  `super-productivity-planning` after the MCP is healthy.
+- Require a configured Super Productivity MCP for live task work. Do not use
+  shell or UI fallbacks to mutate personal task data.
+- Diagnose before changing code or configuration. Apply the smallest fix in
+  the failing layer.
 
-- If server hangs on `initialize`: verify protocol implementation and stale processes.
-- If tools/resources are missing: inspect `tools/list`, `resources/list`, and adapter registration.
-- If tool calls time out: check `SP_MCP_DATA_DIR` routing and plugin bridge outbox responses.
-- If behavior differs across clients: compare per-client MCP config wiring.
-- Current parity surface is catalog-derived. Read `data/tool-catalog.json`
-  instead of trusting hard-coded tool/resource counts.
+## Failure Router
 
-## The States
+| State | Evidence | First check |
+|---|---|---|
+| SPM1 Launch mismatch | exits, wrong binary, bad path | resolve exact command and executable |
+| SPM2 Handshake stall | `initialize` never returns | run protocol smoke against exact command |
+| SPM3 Surface drift | missing or unknown tools/resources | compare lists with the canonical catalog |
+| SPM4 Bridge timeout | calls time out or queue files accumulate | verify shared IPC path and response IDs |
+| SPM5 Client drift | works in only one client | compare command, environment, and server IDs |
+| SPM6 Catalog drift | catalog sync or handler parity fails | inspect SSOT and run catalog checks |
+| SPM7 Recurrence failure | recurrence tools fail or prompt | verify patched app capability and flags |
 
-### SPM1: Launch Mismatch
-**Symptoms:** Server process starts then exits, wrong command path, or wrong binary/script version.
-**Key Questions:**
-- Is the configured command path executable?
-- Is a stale `go run` process still alive from an older build?
-- Is client config pointing to wrapper script vs binary directly?
-**Interventions:**
-- Validate launcher path and executable bits.
-- Kill stale processes and restart MCP host.
-- Prefer stable wrapper script with explicit env defaults.
+Read `references/diagnostic-playbook.md` for state-specific checks and fixes.
 
-### SPM2: Handshake Stall (`initialize` never returns)
-**Symptoms:** Client repeatedly logs "Waiting for server to respond to `initialize` request...".
-**Key Questions:**
-- Does direct stdin test return JSON-RPC initialize response?
-- Is the server implementing MCP JSON-RPC 2.0, not a custom protocol?
-- Is stdout contaminated by non-protocol logs?
-**Interventions:**
-- Run protocol smoke script.
-- Ensure JSON-RPC methods are implemented: `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`.
-- Route logs to stderr only.
+## Workflow
 
-### SPM3: Tool/Resource Surface Drift
-**Symptoms:** Server connects but tools/resources are absent/misaligned; client calls unknown tool names or cannot read expected `sp://` resources.
-**Key Questions:**
-- Does `tools/list` include expected names?
-- Does `resources/list` include the resource URIs declared in `data/tool-catalog.json`?
-- Do `mcpName` and `action` in `internal/catalog/tools.json` match the JS handler keys in `plugin/bridge/actions/`?
-- Are schemas valid JSON Schema objects?
-**Interventions:**
-- Compare reported tool names against the canonical catalog (`internal/catalog/tools.json`, mirrored at `plugin/bridge/tool-catalog.json` and `skill/super-productivity-mcp/data/tool-catalog.json`).
-- Edit the Go-side catalog only; run `make sync-catalogs` to propagate.
-- Resource definitions live in the catalog; resource reads dispatch through normal bridge actions.
+1. Capture the exact failing client, command, error, and first failing method.
+2. Run the read-only checks in `references/ops-checklist.md`.
+3. Classify the first failing pipeline state.
+4. Inspect only that layer and collect evidence before editing.
+5. Apply one minimal fix.
+6. Re-run terminal smoke tests and the affected client.
+7. Report the failed layer, evidence, change, and verification.
 
-### SPM6: Catalog Drift
-**Symptoms:** `make check-catalogs` fails in CI, plugin throws "Tool catalog declares actions without handlers" or "Handlers not declared in tool catalog" at load time, or schema validation rejects arguments the JS handler actually accepts.
-**Key Questions:**
-- Was `internal/catalog/tools.json` edited without running `make sync-catalogs`?
-- Was a JS handler added/removed without updating the catalog?
-- Does the schema's `required` list match what the JS handler reads from `payload`?
-**Interventions:**
-- Run `make sync-catalogs` and commit the resulting copies.
-- Add or remove the handler in `plugin/bridge/actions/` to match the catalog.
-- Update the schema (Go-side SSOT) to use the JS-canonical field names.
+Use parallel subagents only for independent read-heavy work such as comparing
+multiple client configs or reducing separate log sets. Keep fixes centralized.
 
-### SPM7: Recurrence Automation
-**Symptoms:** recurrence tools are missing, recurrence calls fail with unsupported action, or `update_task_recurrence` opens a confirmation dialog.
-**Key Questions:**
-- Does `tools/list` include `set_task_recurrence`, `update_task_recurrence`, and `delete_task_recurrence`?
-- Does `bridge_capabilities` include `task.setRecurrence`, `task.updateRecurrence`, and `task.deleteRecurrence`?
-- Is the installed Super Productivity build patched to allow repeat-config plugin actions?
-- Did the caller pass `isAskToUpdateAllTaskInstances:true`?
-**Interventions:**
-- Use the recurrence tools only with the patched Super Productivity build.
-- For non-interactive automation, omit `isAskToUpdateAllTaskInstances` or pass `false`; `true` intentionally triggers Super Productivity's UI confirmation for updating existing instances.
-- Verify recurrence by reading the task back and checking `repeatCfgId`, `dueDay`, and `plannedAt`.
+## Bundled Tools
 
-### SPM4: Bridge Round-Trip Timeout
-**Symptoms:** `tools/call` executes but returns timeout/internal errors; requests accumulate in `inbox/`.
-**Key Questions:**
-- Are request files written to the same `SP_MCP_DATA_DIR` the plugin watches?
-- Is plugin bridge running and draining `inbox/` to `outbox/`?
-- Are response files correlated by request `id`?
-**Interventions:**
-- Validate IPC directory health.
-- Confirm plugin JS bridge loop is active.
-- Verify protocol envelope version and id correlation.
-
-### SPM5: Multi-Config Inconsistency
-**Symptoms:** Works in one client but fails in another (VS Code/Codex/OpenCode/Claude).
-**Key Questions:**
-- Do all emitted configs point at the same launcher and env?
-- Are duplicate MCP server entries conflicting?
-- Are version pins inconsistent (e.g., `latest` vs pinned)?
-**Interventions:**
-- Normalize configs via shared wrapper + shared env baseline.
-- Keep one canonical server id per platform.
-- Pin versions where possible and avoid interactive startup behavior.
-
-## Diagnostic Process
-
-1. Confirm state from logs (`initialize` stall, unknown tool, timeout, etc.).
-2. Run `scripts/protocol_smoke.ts` or a direct JSON-RPC smoke against configured launch command.
-3. If handshake passes, run `scripts/check_runtime_paths.ts` for env/path parity.
-4. Compare tool names to `data/tool-catalog.json`.
-5. Check resource URIs if the failure involves `sp://` reads.
-6. Apply smallest fix in the failing layer only.
-7. Re-test in-client and from terminal before concluding.
-
-## Key Questions
-
-### For Startup Failures
-- Which exact command is the client launching?
-- Does the same command respond to a raw `initialize` stdin test?
-- Are there stale background processes from old builds?
-
-### For Runtime Failures
-- Does `tools/list` return all expected tools?
-- Does `resources/list` return the resources declared in `data/tool-catalog.json`?
-- Does a simple tool call (`bridge_health`) succeed?
-- Do compatibility diagnostics (`check_connection`, `debug_directories`) succeed after plugin install?
-- Are inbox/outbox files being created and consumed?
-
-### For Config Drift
-- Is there more than one MCP server id for the same backend?
-- Are all configs using the same script path and env defaults?
-- Did any tool update reintroduce `@latest` usage?
-
-## Anti-Patterns
-
-### The Protocol Guess
-**Pattern:** Assuming any JSON line protocol is MCP-compatible.
-**Problem:** Client waits forever because method/shape mismatch blocks handshake.
-**Fix:** Implement strict JSON-RPC 2.0 MCP methods and response envelopes.
-**Detection:** Repeating `Waiting for server to respond to initialize`.
-
-### The Stale Runner
-**Pattern:** Patching code but forgetting old `go run` process is still active.
-**Problem:** Client keeps talking to old binary despite new source changes.
-**Fix:** Kill stale process tree, restart host, and confirm timestamps.
-**Detection:** Process start time predates latest fix commit/build.
-
-### The Split-Brain Config
-**Pattern:** Different client configs point to different commands/env directories.
-**Problem:** Works in one host, fails in another with misleading symptoms.
-**Fix:** Centralize on one wrapper script and harmonized env variables.
-**Detection:** Same action behaves differently across clients.
-
-### The Tool Alias Drift
-**Pattern:** Editing the catalog or JS handlers in only one place.
-**Problem:** Plugin throws on load (drift check), or schema validates arguments the handler doesn't accept.
-**Fix:** Edit `internal/catalog/tools.json` (SSOT), run `make sync-catalogs`, ensure JS handler keys match `action` names.
-
-## Available Tools
-
-### protocol_smoke.ts
-Sends an MCP `initialize` request to a command and verifies a valid response.
+Resolve paths relative to this skill directory.
 
 ```bash
-deno run --allow-run --allow-env --allow-read scripts/protocol_smoke.ts --command "/path/to/super-productivity-mcp/scripts/run-mcp.sh"
+./validate.sh
 ```
 
-### check_runtime_paths.ts
-Checks launcher executability, env defaults, and expected IPC directories.
+The validator defaults to `sp-mcp` from `PATH` and
+`$SP_MCP_DATA_DIR` or `~/.local/share/super-productivity-mcp`. Override them:
 
 ```bash
-deno run --allow-read --allow-env scripts/check_runtime_paths.ts --data-dir "/path/to/super-productivity-mcp-data"
+./validate.sh --command /path/to/sp-mcp --data-dir /path/to/ipc
 ```
 
-## Reasoning Requirements
+Inspect the catalog without loading the full JSON into context:
 
-### Standard Reasoning
-- Identify current state from user logs.
-- Choose minimal layer to edit (config vs adapter vs bridge).
-- Reproduce with a single direct command path.
+```bash
+deno run --allow-read scripts/catalog_summary.ts data/tool-catalog.json
+```
 
-### Extended Reasoning (ultrathink)
-Use extended thinking for:
-- Cross-client drift analysis across 3+ config files.
-- Failures involving both protocol and bridge round-trip timing.
-- Situations where fixes in one layer create regressions in another.
+The validation path is nonmutating. A live bridge call is intentionally
+separate because it requires a running Super Productivity application.
 
-**Trigger phrases:** "hangs forever", "works in one client only", "still broken after restart".
+## Catalog Contract
 
-## Execution Strategy
+- Treat `internal/catalog/tools.json` in the suite repository as the source of
+  truth.
+- Treat `plugin/bridge/tool-catalog.json` and this skill's
+  `data/tool-catalog.json` as generated mirrors.
+- Edit the source of truth, run `make sync-catalogs`, then run
+  `make check-catalogs`.
+- Match catalog `mcpName`, `action`, schema fields, and bridge handler keys.
 
-### Sequential (Default)
-1. Reproduce.
-2. Confirm state.
-3. Patch one layer.
-4. Validate handshake + tool call.
+## Safety
 
-### Parallelizable
-- Config file comparisons across clients.
-- Static validation of tool catalog vs adapter registration.
+- Treat Super Productivity as live personal data.
+- Keep diagnostic probes read-only unless the user explicitly requests repair.
+- Before killing or restarting a process, inspect its PID, command, parent, and
+  start time. Ask before stopping anything not proven to be the target server.
+- Do not add duplicate MCP server IDs to fix discovery.
+- Keep protocol logs on stderr; stdout must remain protocol-clean.
+- Store task-specific artifacts outside the shared skill directory unless the
+  user explicitly asks to update the skill.
 
-### Subagent Candidates
-| Task | Agent Type | When to Spawn |
-|------|------------|---------------|
-| Broad file discovery | Explore | When unsure where launch config is defined |
-| Test output triage | execution-focused | When many logs need concise failure extraction |
+## Completion Contract
 
-## Context Management
+Do not claim recovery until:
 
-### Approximate Token Footprint
-- Skill base: ~3k
-- With scripts + data loaded: ~5k
-- With full runtime logs: ~8k+
+- the configured command launches;
+- `initialize` succeeds;
+- `tools/list` and `resources/list` match the catalog;
+- the affected client reconnects;
+- a nonmutating bridge health/read call succeeds when the live app is required.
 
-### Context Optimization
-- Load only the failing layer’s files first.
-- Keep logs trimmed to handshake + first failing call.
-- Use data catalog reference instead of re-listing tool names.
-
-### When Context Gets Tight
-- Prioritize: current failing state, command path, handshake evidence.
-- Defer: broad integration commentary and historical changes.
-- Drop: unrelated client configs.
-
-## Example Interaction
-
-**User:** "MCP server starts but initialize hangs forever"
-
-**Your approach:**
-1. Classify as `SPM2`.
-2. Run protocol smoke against exact launch command.
-3. If smoke passes, check stale processes and restart host.
-4. Re-run and verify `tools/list`.
-
-**User:** "It works in Codex but not in VS Code"
-
-**Your approach:**
-1. Classify as `SPM5`.
-2. Compare both client configs for command/env mismatch.
-3. Normalize to shared wrapper and pinned versions.
-4. Validate both clients after restart.
-
-## What You Do NOT Do
-
-- You do not rewrite the full architecture for isolated startup bugs.
-- You do not treat plugin/API business logic issues as protocol issues without evidence.
-- You do not add duplicate MCP server ids to "fix" discovery.
-- You do not leave fixes unverified with a real handshake test.
-
-## Integration Graph
-
-### Inbound (From Other Skills)
-| Source Skill | Source State | Leads to State |
-|--------------|--------------|----------------|
-| mcp-security-audit | Unpinned or conflicting MCP config entries | SPM5: Multi-Config Inconsistency |
-| systematic-debugging | Repro established, root cause unknown | SPM1–SPM4 |
-
-### Outbound (To Other Skills)
-| This State | Leads to Skill | Target State |
-|------------|----------------|--------------|
-| SPM5: Multi-Config Inconsistency | mcp-security-audit | Config hardening + pinning |
-| SPM4: Bridge Round-Trip Timeout | debugging-strategies | Runtime instrumentation / root cause narrowing |
-
-### Complementary Skills
-| Skill | Relationship |
-|-------|--------------|
-| mcp-security-audit | Secures and standardizes MCP config surface |
-| systematic-debugging | General root-cause loop for non-protocol defects |
-| skill-builder | Evolves this skill from real failure artifacts |
-
-## Verification (Oracle)
-
-### What This Skill Can Verify
-- Launch command exists and is executable (High).
-- `initialize` response shape is valid JSON-RPC/MCP (High).
-- Required tool names exist in `tools/list` (High).
-- Expected resources exist in `resources/list` (High).
-- IPC directory presence and basic accessibility (Medium).
-
-### What Requires Human Judgment
-- Whether a timeout is caused by plugin runtime internals vs user workflow timing.
-- Whether to patch adapter naming or preserve backward compatibility.
-- Whether observed config drift is intentional.
-
-## Output Persistence
-
-### Output Location
-Persist artifacts in this skill folder:
-- `./.agents/super-productivity-mcp/SKILL.md`
-- `./.agents/super-productivity-mcp/scripts/`
-- `./.agents/super-productivity-mcp/data/`
-- `./.agents/super-productivity-mcp/references/`
-
-### What to Save
-- Reusable diagnostics scripts.
-- Canonical tool catalog.
-- Minimal checklists for protocol/runtime validation.
-
-## Design Constraints
-
-### This Skill Assumes
-- Local access to MCP config and repo files.
-- Ability to run a direct launch command for smoke testing.
-
-### This Skill Does Not Handle
-- Super Productivity app feature design requests unrelated to MCP reliability.
-- Generic non-MCP debugging where no MCP handshake/tooling is involved.
+State any verification that could not be completed.

@@ -1,0 +1,11 @@
+interface:
+  display_name: "Super Productivity MCP Diagnostics"
+  short_description: "Diagnose MCP runtime and bridge failures"
+  default_prompt: "Use $super-productivity-mcp to diagnose this Super Productivity MCP failure and verify the smallest fix."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "super-productivity"
+      description: "Super Productivity task and runtime MCP server"
+      transport: "stdio"

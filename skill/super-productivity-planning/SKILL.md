@@ -1,77 +1,64 @@
 ---
 name: super-productivity-planning
-description: Super Productivity task planning, hygiene, inbox triage, and time-block scheduling workflow. Use when the user asks to clean up tasks, empty or triage the Inbox, normalize titles/descriptions/subtasks/estimates/tags, reschedule overdue/today/unscheduled work, create a realistic daily plan with breaks/routines/buffers, or verify that active work is fully scheduled.
+description: Plan and modify Super Productivity tasks through Inbox triage, task normalization, estimate/tag/project/date changes, overdue or unscheduled cleanup, and realistic time-block scheduling. Use when the user explicitly requests task hygiene or a daily schedule; use super-productivity-maintenance for audit-first periodic reviews and super-productivity-mcp when tools are unhealthy.
 ---
 
 # Super Productivity Planning
 
-## Overview
+Treat planning as a controlled transaction over live personal task data.
 
-Run Super Productivity task cleanup and schedule planning as a controlled data
-maintenance operation. This skill owns task hygiene, inbox triage, estimate
-normalization, tag simplification, and time-block scheduling.
+## References
 
-## Load-on-Demand References
+- Read `references/planning-runbook.md` before broad or mutating work.
+- Read `references/verification-checklist.md` before reporting a full overhaul
+  or any guarantee such as “nothing remains unscheduled.”
 
-- Read `references/planning-runbook.md` before any broad or mutating planning
-  pass.
-- Read `references/verification-checklist.md` before the final report or when
-  the user asks for strong guarantees such as “nothing unscheduled remains.”
+## Gates
 
-## Boundaries
+- Verify the configured Super Productivity MCP exists and is healthy.
+- Route runtime, bridge, protocol, catalog, or client failures to
+  `super-productivity-mcp`.
+- Never fall back to shell or GUI automation for live task mutations.
+- Establish date, timezone, horizon, work budget, and whether subtasks are in
+  scope before scheduling.
 
-- Use `super-productivity-mcp` instead when the MCP server, plugin bridge,
-  protocol, catalog, or client config is failing.
-- Use `super-productivity-maintenance` instead when the user wants a high-level
-  periodic audit and has not yet selected task planning as the lane.
-- Do not delete, bulk-complete, or rewrite recurring templates without explicit
-  confirmation.
+## Transaction
 
-## Default Workflow
+1. **Inventory:** Read projects, tags, active/current tasks, Inbox, overdue,
+   target dates, unscheduled work, and relevant subtasks.
+2. **Propose:** Define compact changes, scheduling capacity, and invariants.
+3. **Dry run:** Use native dry-run tools when available; otherwise present a
+   bounded change summary before broad mutations.
+4. **Apply:** Mutate in conservative batches within the requested scope.
+5. **Verify:** Re-read every affected surface; never treat intended payloads as
+   proof.
 
-1. **Establish anchors.** Confirm the meaning of “today,” start time, planning
-   horizon, workday budget, timezone, and whether all active tasks or only
-   top-level tasks must be scheduled.
-2. **Inventory first.** Query projects, tags, current task, active tasks,
-   inbox tasks, overdue tasks, target-day planned tasks, unscheduled tasks,
-   and subtasks before deciding what to change.
-3. **Design hygiene rules.** Define the compact tag taxonomy, title/description
-   standards, estimate defaults, subtask policy, and scheduling budget before
-   batch updates.
-4. **Triage Inbox and stale dates.** Route active Inbox work into real projects,
-   clear stale planned dates, preserve true deadlines, and avoid losing context.
-5. **Normalize tasks.** Improve vague titles, add notes/descriptions where
-   needed, create subtasks for broad singleton tasks, and keep estimates
-   realistic.
-6. **Build the schedule.** Time-block from the requested start time, include
-   routines, breaks, chores, shutdown, and misc buffers, then spread remaining
-   work across future dates without overfilling days.
-7. **Verify invariants.** Re-query the data after mutation. Do not rely on the
-   intended batch payload as proof.
+Require confirmation before deleting, bulk-completing, rewriting recurrence, or
+broadly changing titles, notes, projects, subtasks, or taxonomy beyond the
+explicit request.
 
 ## Scheduling Defaults
 
-- Keep daily planned task capacity near 6 focused hours unless the user asks
-  for more. Use the remaining day for routines, buffers, breaks, chores,
-  transitions, and unexpected work.
-- Prefer 15–30 minute estimates for checklist subtasks, 45–90 minutes for
-  bounded implementation/admin tasks, and split anything larger than 2 hours.
-- Preserve slack. A “full day” should still have recovery and misc work space.
-- Schedule every active task if the user asks for complete hygiene, even if the
-  fallback horizon extends beyond the next two weeks.
+- Keep focused task capacity near six hours unless the user chooses otherwise.
+- Reserve time for routines, breaks, transitions, chores, recovery, and
+  interruptions.
+- Prefer 15–30 minute checklist items and 45–90 minute bounded work; split work
+  larger than two hours unless it is intentionally one focus block.
+- Use the MCP's timezone-aware date conversion tool, such as
+  `make_planned_at`, with an explicit named timezone. Never hand-calculate
+  `plannedAt`.
+- Extend the horizon rather than overfilling days when complete scheduling is
+  requested.
 
-## Verification Contract
+## Completion Contract
 
-For a full overhaul, report these checks explicitly:
+For a full overhaul, report:
 
-- active task count including subtasks;
-- active top-level task count;
-- unscheduled active task count;
-- Inbox active top-level count;
-- stale planned-date count for any cleared anchor date;
-- overdue count before the new anchor date;
-- schedule horizon for top-level tasks and for all active tasks;
-- the final time-block plan for the requested day.
+- active counts with and without subtasks;
+- unscheduled and Inbox counts;
+- stale-date and overdue counts;
+- schedule horizons for top-level and all active tasks;
+- the requested-day plan;
+- any unknown or nonzero invariant.
 
-If any check is nonzero or unknown, say so and either fix it or mark the pass
-partial.
+If fresh reads cannot prove an invariant, mark the pass partial.

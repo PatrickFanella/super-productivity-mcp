@@ -1,132 +1,96 @@
 # Super Productivity Planning Runbook
 
-Use this runbook for broad or mutating Super Productivity cleanup passes. The
-goal is to make live task data coherent, scheduled, and usable without erasing
-context or overfilling the calendar.
+## Contents
 
-## 1. Establish Inputs
+- [Inputs](#inputs)
+- [Inventory](#inventory)
+- [Transaction pattern](#transaction-pattern)
+- [Hygiene rules](#hygiene-rules)
+- [Inbox triage](#inbox-triage)
+- [Scheduling](#scheduling)
+- [Verification and report](#verification-and-report)
 
-Capture these before writing data:
+## Inputs
 
-- anchor date and timezone;
-- what the user means by “today” if the conversation crosses midnight;
-- schedule start time and desired working-window length;
-- planning horizon and whether it may extend past two weeks;
-- whether all active tasks, including subtasks, must be scheduled;
-- permission for creating projects/tags or changing recurring templates.
+Resolve before writes:
 
-Use todos for any multi-step overhaul. Include final verification as a todo
-from the start.
+- anchor date and named timezone;
+- what “today” means across midnight;
+- requested start time, working window, and planning horizon;
+- whether subtasks and recurring templates are in scope;
+- permission to create projects/tags or perform broad rewrites.
 
-## 2. Inventory Checklist
+## Inventory
 
-Collect a read-only snapshot first:
+Collect a fresh read-only snapshot:
 
-- MCP bridge health and available tool names;
-- projects and the Inbox project id;
-- tags, including obvious duplicates and over-specific clusters;
-- current active task and recent worklog if useful for routine/context clues;
-- active top-level tasks;
-- active Inbox tasks;
-- overdue tasks before the new anchor date;
-- tasks planned for stale dates that must be cleared;
-- tasks planned for the target day;
-- unscheduled active tasks;
-- active subtasks and whether they inherit parent dates/tags.
+- MCP and bridge health;
+- projects, Inbox ID, and tags;
+- current task and active top-level tasks;
+- active Inbox, overdue, target-day, stale-date, and unscheduled tasks;
+- active subtasks and their date/tag inheritance behavior.
 
-If MCP calls fail, stop planning and switch to `super-productivity-mcp`.
+Stop and route to `super-productivity-mcp` if the tool surface is unhealthy.
 
-## 3. Hygiene Rules
+## Transaction Pattern
 
-Apply rules consistently before batching mutations:
+1. Capture rollback evidence as `{id, changed fields, previous values}`.
+2. Build a compact proposed-change summary grouped by operation.
+3. Use native dry-run tools where available.
+4. Apply no more than 25 items per batch unless the tool documents a lower
+   limit.
+5. Re-read the affected items after each major batch.
+6. Stop on unexpected errors or invariant drift; do not compound a partial
+   mutation.
 
-- **Titles:** Make active task titles specific, imperative, and typo-clean.
-  Preserve the user’s wording when it carries meaning.
-- **Descriptions/notes:** Add notes when a title alone does not define the next
-  action, scope, acceptance criteria, or context.
-- **Subtasks:** Add subtasks for broad singleton tasks. Avoid creating subtasks
-  for already atomic work.
-- **Estimates:** Use 15–30 minutes for checklist subtasks, 45–90 minutes for
-  bounded work, and split anything larger than 2 hours unless it is intentionally
-  a large focus block.
-- **Deadlines vs plans:** Preserve true due dates. Move stale planned work to new
-  planned dates instead of treating every old planned date as a hard deadline.
-- **Recurring work:** Do not rewrite recurring templates without explicit user
-  confirmation.
+Require confirmation for broad mutations that were not explicit in the user's
+request. Never delete, bulk-complete, or rewrite recurring templates without
+explicit confirmation.
 
-## 4. Tag Taxonomy
+## Hygiene Rules
 
-Prefer a compact taxonomy of roughly 12–15 active-use tags. A good default set:
+- Make titles specific and imperative while preserving meaningful wording.
+- Add notes only when they clarify next action, scope, context, or acceptance
+  criteria.
+- Add subtasks only to genuinely broad work.
+- Keep true due dates distinct from planned work.
+- Resolve existing tags by title and consolidate only when aliases are clearly
+  redundant.
+- Do not invent a canonical taxonomy or create projects/tags without approval.
 
-- Project
-- Routine
-- Planning
-- Focus Block
-- Admin
-- Backlog
-- Review
-- Shutdown
-- Chores
-- Health
-- Development
-- Content
-- Social
-- Research
-- Personal
+## Inbox Triage
 
-Resolve existing tags by title instead of hard-coding ids. Create missing
-canonical tags only after user confirmation. Remove overly specific scheduling
-or technology tags from active tasks only when they are not serving a real
-filtering/reporting purpose.
+For each active Inbox item:
 
-## 5. Inbox Triage
+1. Classify it as active work, reference, recurring work, or backlog.
+2. Route active work to the appropriate existing project.
+3. Add only the context needed to make the next action clear.
+4. Add a plausible estimate and existing useful tags.
+5. Schedule it, or deliberately leave it in backlog with the user's approval.
 
-For each active Inbox task:
+Inbox zero means no active top-level capture items remain unintentionally.
 
-1. Decide whether it is real active work, reference material, recurring/routine
-   work, or backlog.
-2. Route active work into the appropriate project.
-3. Add enough notes/subtasks to make the next action clear.
-4. Assign estimates and tags.
-5. Schedule it or explicitly place it in a future backlog/review slot.
+## Scheduling
 
-Do not leave active top-level tasks in Inbox after a full triage pass unless the
-user asks to preserve Inbox as a capture queue.
+1. Convert local dates/times with the MCP's timezone-aware conversion tool.
+2. Build the requested day first.
+3. Place priority and stale work into useful focus blocks.
+4. Preserve the user's routines and add requested breaks, chores, buffers, and
+   shutdown.
+5. Spread remaining work across future days within the chosen capacity.
+6. Continue beyond the initial horizon rather than overfilling days when full
+   coverage is required.
 
-## 6. Scheduling Algorithm
+When subtasks need dates, inherit the parent's date unless the work genuinely
+spans multiple days.
 
-Build the requested day first, then spread remaining work:
+## Verification and Report
 
-1. Start at the user’s requested time.
-2. Insert launch/routine, breaks, meal/reset, chores/errands, misc buffer, and
-   shutdown blocks if the user asked for a humane daily plan.
-3. Schedule high-priority or stale work into focus blocks.
-4. Keep focused task capacity near 6 hours/day by default, with remaining time
-   reserved for routines, admin, transition cost, interruptions, and recovery.
-5. Spread the rest across future workdays with similar capacity limits.
-6. If the user requires every active task to be scheduled, continue past the
-   initial horizon until no active task or subtask is unscheduled.
+Use fresh task reads plus schedule-range or schedule-health evidence in the
+named timezone. Apply `references/verification-checklist.md`, then report:
 
-When subtasks must be scheduled, prefer the parent’s planned date/tags unless
-there is a clear reason to distribute subtasks across multiple days.
-
-## 7. MCP Execution Notes
-
-- Prefer official MCP tools exposed by `tools/list`.
-- If a documented helper is unavailable, use the supported lower-level tools or
-  direct newline-delimited JSON-RPC against the configured MCP binary only after
-  confirming the server’s actual protocol behavior.
-- Batch updates in conservative chunks and re-query after each major wave.
-- Never treat a successful batch call as proof that all intended invariants now
-  hold; verify from fresh reads.
-
-## 8. Final Report Shape
-
-Report:
-
-- counts before/after if useful;
-- new or changed organizing surfaces;
-- taxonomy used;
+- before/after counts where useful;
+- changes grouped by type;
 - final requested-day schedule;
-- verification checklist results;
-- any intentionally deferred work or remaining risk.
+- schedule horizon and remaining exceptions;
+- rollback or partial-mutation information when applicable.

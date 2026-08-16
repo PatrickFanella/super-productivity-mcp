@@ -12,6 +12,8 @@ Use this checklist before declaring a planning pass complete.
 
 ## Scheduling Invariants
 
+- [ ] Anchor dates and planned times were interpreted in the named timezone.
+- [ ] Fresh schedule-range or schedule-health evidence was used after writes.
 - [ ] Active unscheduled task count is zero when the user requested complete
       scheduling.
 - [ ] Active unscheduled subtask count is zero when subtasks are in scope.

@@ -1,4 +1,11 @@
 interface:
   display_name: "Super Productivity Planning"
-  short_description: "Triage tasks and build time-block plans"
-  default_prompt: "Clean up Super Productivity tasks, triage the inbox, normalize estimates and tags, then create a verified time-block schedule."
+  short_description: "Triage tasks and build verified schedules"
+  default_prompt: "Use $super-productivity-planning to clean up my tasks and create a realistic, verified schedule."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "super-productivity"
+      description: "Super Productivity task and runtime MCP server"
+      transport: "stdio"

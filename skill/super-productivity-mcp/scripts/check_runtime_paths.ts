@@ -3,59 +3,86 @@
 export {};
 declare const Deno: any;
 
-/**
- * check_runtime_paths.ts
- *
- * Validates runtime assumptions for Super Productivity MCP.
- */
-
-function arg(name: string, fallback?: string): string | undefined {
-  const idx = Deno.args.indexOf(name);
-  if (idx !== -1 && idx + 1 < Deno.args.length) return Deno.args[idx + 1];
-  return fallback;
+function arg(name: string): string | undefined {
+  const index = Deno.args.indexOf(name);
+  return index >= 0 && index + 1 < Deno.args.length
+    ? Deno.args[index + 1]
+    : undefined;
 }
 
-const dataDir = arg("--data-dir", Deno.env.get("SP_MCP_DATA_DIR") || "") || "";
-const launcher = arg("--launcher", "./scripts/run-mcp.sh")!;
-
+const launcherArg = arg("--launcher") || Deno.env.get("SP_MCP_COMMAND") || "";
+const dataDirArg = arg("--data-dir") || Deno.env.get("SP_MCP_DATA_DIR") || "";
+const jsonOutput = Deno.args.includes("--json");
 const requiredDirs = ["inbox", "processing", "outbox", "events", "deadletter"];
+const checks: Array<{ name: string; ok: boolean; path: string; detail?: string }> = [];
 
-function checkPath(path: string): boolean {
+function resolve(path: string): string {
   try {
-    const st = Deno.statSync(path);
-    return st.isDirectory || st.isFile;
+    return Deno.realPathSync(path);
   } catch {
-    return false;
+    return path;
   }
 }
 
-let ok = true;
-
-if (!checkPath(launcher)) {
-  console.error(`❌ launcher missing: ${launcher}`);
-  ok = false;
-} else {
-  console.log(`✅ launcher present: ${launcher}`);
+function checkLauncher(path: string): void {
+  if (!path) {
+    checks.push({ name: "launcher", ok: false, path, detail: "not provided" });
+    return;
+  }
+  try {
+    const stat = Deno.statSync(path);
+    const executable = Deno.build.os === "windows" ||
+      (typeof stat.mode === "number" && (stat.mode & 0o111) !== 0);
+    checks.push({
+      name: "launcher",
+      ok: stat.isFile && executable,
+      path: resolve(path),
+      detail: !stat.isFile ? "not a regular file" : !executable ? "not executable" : undefined,
+    });
+  } catch (error) {
+    checks.push({
+      name: "launcher",
+      ok: false,
+      path,
+      detail: (error as Error).message,
+    });
+  }
 }
 
-if (!dataDir) {
-  console.error("❌ SP_MCP_DATA_DIR not set and no --data-dir provided");
-  ok = false;
-} else {
-  console.log(`ℹ️ data dir: ${dataDir}`);
-  for (const d of requiredDirs) {
-    const p = `${dataDir}/${d}`;
-    if (checkPath(p)) {
-      console.log(`✅ ${d}`);
-    } else {
-      console.error(`❌ missing ${d}: ${p}`);
-      ok = false;
+function checkDirectory(base: string, name: string): void {
+  const path = `${base}/${name}`;
+  try {
+    const stat = Deno.statSync(path);
+    if (stat.isDirectory) {
+      Deno.readDirSync(path);
     }
+    checks.push({
+      name,
+      ok: stat.isDirectory,
+      path: resolve(path),
+      detail: stat.isDirectory ? undefined : "not a directory",
+    });
+  } catch (error) {
+    checks.push({ name, ok: false, path, detail: (error as Error).message });
   }
 }
 
-if (!ok) {
-  Deno.exit(1);
+checkLauncher(launcherArg);
+if (!dataDirArg) {
+  checks.push({ name: "data-dir", ok: false, path: "", detail: "not provided" });
+} else {
+  for (const name of requiredDirs) checkDirectory(dataDirArg, name);
 }
 
-console.log("✅ runtime paths look healthy");
+const ok = checks.every((check) => check.ok);
+if (jsonOutput) {
+  console.log(JSON.stringify({ ok, launcher: resolve(launcherArg), dataDir: resolve(dataDirArg), checks }, null, 2));
+} else {
+  for (const check of checks) {
+    const symbol = check.ok ? "OK" : "FAIL";
+    const detail = check.detail ? ` (${check.detail})` : "";
+    console.log(`${symbol} ${check.name}: ${check.path}${detail}`);
+  }
+}
+
+if (!ok) Deno.exit(1);

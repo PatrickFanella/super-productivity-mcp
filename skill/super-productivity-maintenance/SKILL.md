@@ -1,73 +1,59 @@
 ---
 name: super-productivity-maintenance
-description: High-level Super Productivity maintenance and routing runbook. Use when the user asks to clean up, audit, maintain, reset, or run a daily/weekly/monthly pass over Super Productivity; coordinates MCP health checks, task planning, inbox triage, schedule hygiene, and follow-up reporting by routing to the focused Super Productivity skills.
+description: Audit and coordinate periodic Super Productivity upkeep across MCP health, task planning, Inbox hygiene, schedule review, and follow-up reporting. Use for audit-first daily, weekly, or monthly reviews and mixed maintenance passes; use super-productivity-planning when the request already specifies task cleanup or scheduling, and super-productivity-mcp for runtime failures.
 ---
 
 # Super Productivity Maintenance
 
-## Overview
+Coordinate mixed or periodic maintenance while keeping runtime diagnosis and
+task mutation in their focused workflows.
 
-Coordinate a high-level Super Productivity maintenance pass without mixing
-runtime diagnostics, task planning, and review work into one blob. Use this
-skill as the router and runbook for deciding which focused Super Productivity
-workflow should own each lane.
+## Route First
 
-## Skill Boundaries
+- Use `super-productivity-mcp` for startup, handshake, catalog, IPC, bridge, or
+  client-configuration failures.
+- Use `super-productivity-planning` for explicit Inbox triage, task
+  normalization, estimate/tag/date changes, or time-block scheduling.
+- Keep this skill responsible for audit scope, lane selection, and the final
+  maintenance report.
 
-Use the three-skill split deliberately:
+If one focused lane fully owns the request, route to it and keep this wrapper
+out of the foreground.
 
-- `super-productivity-mcp` — MCP health, development, bridge reliability,
-  protocol smoke tests, tool/resource catalog drift, install/config issues.
-- `super-productivity-maintenance` — high-level periodic upkeep, system audit,
-  routing, scope control, and final maintenance report.
-- `super-productivity-planning` — task hygiene, inbox triage, estimates,
-  tag simplification, overdue/today/unscheduled cleanup, and time-block
-  scheduling.
+## Workflow
 
-If the request is entirely one lane, load the focused skill and do not keep
-this maintenance wrapper in the foreground.
+1. Establish the anchor date, timezone, horizon, and desired maintenance depth.
+2. Choose `audit-only` or `approved overhaul`.
+   - In audit-only mode, inventory and report without writes.
+   - In overhaul mode, keep writes within the user's requested scope and route
+     mutations to the focused skill.
+3. Health-gate the MCP before reading or modifying live task data.
+4. Inventory only the surfaces required by the selected lanes.
+5. Run independent read-heavy lane audits in parallel when useful. Centralize
+   all live mutations and verification.
+6. Preserve deadlines, routines, and scheduling slack.
+7. Re-query affected surfaces before reporting completion.
 
-## Maintenance Workflow
+Use a task-tracking tool for a multi-step overhaul when one is available, and
+include verification from the start.
 
-1. **Clarify the maintenance goal.** Establish date, timezone, desired horizon,
-   whether live task mutation is allowed, and whether the user wants a light
-   audit or a full overhaul.
-2. **Health gate the MCP.** If any Super Productivity call fails, stalls, or
-   reports missing tools/resources, switch to `super-productivity-mcp` before
-   modifying data.
-3. **Inventory the system.** Collect projects, tags, current task, active tasks,
-   inbox tasks, overdue tasks, tasks planned for the relevant dates,
-   unscheduled tasks, and obvious recurring/routine surfaces.
-4. **Route the work.** Use `super-productivity-planning` for any mutation pass
-   that touches task hygiene, estimates, tags, inbox, or scheduling. Keep this
-   skill responsible for scope, priorities, and final reporting.
-5. **Preserve slack.** Unless explicitly told otherwise, maintenance should not
-   fill every open minute. Leave room for miscellaneous work, recovery,
-   interruptions, and routines.
-6. **Verify before reporting.** Do not claim the system is clean until targeted
-   checks prove the requested invariants.
+## Safety
 
-## Safety Rules
+- Treat Super Productivity as live personal data.
+- Prefer reversible changes.
+- Require explicit confirmation before deleting tasks, bulk-completing tasks,
+  rewriting recurring templates, or creating broad taxonomy surfaces.
+- Resolve project and tag names from the live instance; never hard-code IDs.
+- Keep true deadlines distinct from planned work blocks.
 
-- Treat Super Productivity as a live personal operating system, not a test
-  fixture. Prefer reversible changes.
-- Ask before deleting tasks, bulk-completing tasks, changing recurring
-  templates, or creating broad new taxonomy surfaces.
-- Avoid hard-coded project or tag IDs. Resolve names to IDs from the current
-  instance before writing.
-- Preserve deadlines separately from planned work blocks when the MCP exposes
-  both concepts.
-- Use todos for multi-step maintenance passes and include the final
-  verification task from the start.
+## Output
 
-## Standard Output
+Return:
 
-Return a compact maintenance report with:
+- scope, mode, timezone, and anchor dates;
+- lanes and focused skills used;
+- important changes, or findings for audit-only work;
+- fresh verification and remaining gaps;
+- recommended next maintenance point.
 
-- scope and anchor dates used;
-- lanes executed and any focused skills used;
-- important changes made;
-- verification results, including remaining known gaps;
-- the next schedule or next recommended maintenance pass.
-
-If the pass was intentionally partial, say what was not touched.
+State clearly when a pass was intentionally partial.

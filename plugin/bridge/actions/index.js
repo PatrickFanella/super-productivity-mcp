@@ -9,6 +9,7 @@ const handlers = {
   ...require("./task"),
   ...require("./project"),
   ...require("./tag"),
+  ...require("./issue-provider"),
   ...require("./system"),
 };
 

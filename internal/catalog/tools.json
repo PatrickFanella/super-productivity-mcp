@@ -817,6 +817,33 @@
       }
     },
     {
+      "mcpName": "create_gitea_issue_provider",
+      "action": "issueProvider.createGitea",
+      "description": "Connect a project to a Gitea repository by creating a Gitea issue provider. The token is read inside Super Productivity from tokenFile (absolute path, chmod 600) and never passes through the bridge. One provider per project; repeating the call is a no-op. Requires a Super Productivity build that allows issue provider plugin actions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string" },
+          "project_id": { "type": "string" },
+          "host": { "type": "string", "description": "Gitea base URL, e.g. https://git.example.com" },
+          "repoFullname": { "type": "string", "description": "owner/repo" },
+          "repo_full_name": { "type": "string" },
+          "tokenFile": { "type": "string", "description": "Absolute path to a chmod 600 file containing the Gitea access token" },
+          "token_file": { "type": "string" },
+          "scope": { "type": "string", "enum": ["all", "created-by-me", "assigned-to-me"] },
+          "isAutoPoll": { "type": "boolean" },
+          "is_auto_poll": { "type": "boolean" },
+          "isAutoAddToBacklog": { "type": "boolean" },
+          "is_auto_add_to_backlog": { "type": "boolean" },
+          "filterLabels": { "type": "string" },
+          "filter_labels": { "type": "string" },
+          "excludeLabels": { "type": "string" },
+          "exclude_labels": { "type": "string" }
+        },
+        "required": ["host"]
+      }
+    },
+    {
       "mcpName": "get_tags",
       "action": "tag.list",
       "description": "List all tags",

@@ -46,6 +46,7 @@ Generated from `internal/catalog/tools.json`. Do not edit by hand; run `make gen
 | `get_projects` | `project.list` | List all projects |
 | `create_project` | `project.create` | Create a new project |
 | `update_project` | `project.update` | Update an existing project |
+| `create_gitea_issue_provider` | `issueProvider.createGitea` | Connect a project to a Gitea repository by creating a Gitea issue provider. The token is read inside Super Productivity from tokenFile (absolute path, chmod 600) and never passes through the bridge. One provider per project; repeating the call is a no-op. Requires a Super Productivity build that allows issue provider plugin actions. |
 | `get_tags` | `tag.list` | List all tags |
 | `create_tag` | `tag.create` | Create a new tag |
 | `update_tag` | `tag.update` | Update an existing tag |

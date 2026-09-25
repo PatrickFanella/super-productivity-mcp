@@ -666,6 +666,77 @@
     return { repeatCfgId: task.repeatCfgId, deleted: true };
   }
 
+  const ADD_ISSUE_PROVIDER = '[IssueProvider/API] Add IssueProvider';
+  const GITEA_SCOPES = ['all', 'created-by-me', 'assigned-to-me'];
+
+  async function readGiteaTokenFile(tokenFile) {
+    if (typeof tokenFile !== 'string' || !tokenFile.startsWith('/')) throw typedError('INVALID_REQUEST', 'tokenFile must be an absolute path', false);
+    const result = await PluginAPI.executeNodeScript({
+      script: `
+        const fs = require('fs');
+        const st = fs.statSync(args[0]);
+        if ((st.mode & 0o077) !== 0) return { error: 'TOKEN_FILE_PERMISSIONS' };
+        const token = fs.readFileSync(args[0], 'utf8').trim();
+        if (!token) return { error: 'TOKEN_FILE_EMPTY' };
+        return { token };
+      `,
+      args: [tokenFile],
+      timeout: 5000,
+    });
+    if (result && result.success === false) throw typedError('TOKEN_FILE_UNREADABLE', 'Could not read tokenFile', false);
+    const out = result && result.result !== undefined ? result.result : result;
+    if (out && out.error === 'TOKEN_FILE_PERMISSIONS') throw typedError('TOKEN_FILE_PERMISSIONS', 'tokenFile must not be readable by group or others (chmod 600)', false);
+    if (!out || out.error === 'TOKEN_FILE_EMPTY' || !out.token) throw typedError('TOKEN_FILE_EMPTY', 'tokenFile is empty', false);
+    return out.token;
+  }
+
+  async function issueProviderCreateGitea(payload) {
+    if (typeof PluginAPI.dispatchAction !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.dispatchAction is required for issue provider tools', false);
+    const input = payload || {};
+    const projectId = valueOf(input, 'projectId', 'project_id');
+    if (!projectId) throw typedError('INVALID_REQUEST', 'projectId is required', false);
+    const projects = await PluginAPI.getAllProjects();
+    if (!projects.some((p) => p.id === projectId)) throw typedError('PROJECT_NOT_FOUND', 'Project ' + projectId + ' not found', false);
+    if (typeof input.host !== 'string' || !/^https?:\/\/[^\s/]+/.test(input.host)) throw typedError('INVALID_REQUEST', 'host must be an http(s) URL', false);
+    const host = input.host.replace(/\/+$/, '');
+    const repoFullname = valueOf(input, 'repoFullname', 'repo_full_name');
+    if (typeof repoFullname !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(repoFullname)) throw typedError('INVALID_REQUEST', 'repoFullname must look like owner/repo', false);
+    const scope = input.scope == null ? 'all' : input.scope;
+    if (!GITEA_SCOPES.includes(scope)) throw typedError('INVALID_REQUEST', 'scope must be one of ' + GITEA_SCOPES.join(', '), false);
+    const token = await readGiteaTokenFile(valueOf(input, 'tokenFile', 'token_file'));
+    const autoPoll = valueOf(input, 'isAutoPoll', 'is_auto_poll');
+    const autoAdd = valueOf(input, 'isAutoAddToBacklog', 'is_auto_add_to_backlog');
+    const id = 'mcp_gitea_' + projectId;
+    const issueProvider = {
+      id,
+      isEnabled: true,
+      issueProviderKey: 'GITEA',
+      isAutoPoll: autoPoll == null ? true : autoPoll === true,
+      isAutoAddToBacklog: autoAdd === true,
+      isIntegratedAddTaskBar: false,
+      defaultProjectId: projectId,
+      pinnedSearch: null,
+      pollingMode: 'whenProjectOpen',
+      defaultTagIds: [],
+      defaultNote: null,
+      pluginId: 'gitea-issue-provider',
+      pluginConfig: {
+        host,
+        token,
+        repoFullname,
+        scope,
+        filterLabels: valueOf(input, 'filterLabels', 'filter_labels') || '',
+        excludeLabels: valueOf(input, 'excludeLabels', 'exclude_labels') || '',
+      },
+    };
+    await PluginAPI.dispatchAction({
+      type: ADD_ISSUE_PROVIDER,
+      issueProvider,
+      meta: { isPersistent: true, entityType: 'ISSUE_PROVIDER', entityId: id, opType: 'CRT' },
+    });
+    return { issueProviderId: id, projectId, repoFullname, scope, created: true };
+  }
+
   async function taskComplete(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: true, doneOn: Date.now() }); return { completed: true }; }
   async function taskUncomplete(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: false, doneOn: null }); return { uncompleted: true }; }
   async function taskArchive(payload) {
@@ -1172,6 +1243,7 @@
     'tag.list': async () => ({ tags: await PluginAPI.getAllTags() }),
     'tag.create': async (payload) => ({ tagId: await PluginAPI.addTag(payload || {}) }),
     'tag.update': async (payload) => { await PluginAPI.updateTag(payload.tagId, payload.data || payload); return { updated: true }; },
+    'issueProvider.createGitea': issueProviderCreateGitea,
     'notification.show': async (payload) => {
       const message = (payload && payload.message) || '';
       const type = String((payload && payload.type) || 'INFO').toUpperCase();

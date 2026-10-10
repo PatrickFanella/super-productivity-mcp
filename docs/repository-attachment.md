@@ -16,6 +16,10 @@ allowlists, returns only credential-free Gitea metadata, and leaves provider
 deletion/bulk imports blocked. All eight changed TypeScript files passed their
 required `checkFile` checks. The production frontend and Electron builds passed;
 68 targeted plugin API, bridge, provider metadata and action allowlist tests passed.
+The companion patch also fixes backlog pagination: it continues through empty-page
+termination even when Gitea caps results below the requested limit. A capped
+50 + 15 + empty page regression check passed, as did provider typechecking and
+checkFile. It requests issues separately from pull requests.
 
 Super Productivity 19.1.0 stores Gitea settings and credentials under
 `pluginConfig` with `pluginId: "gitea-issue-provider"`. New connections use that

@@ -32,6 +32,35 @@ index fad55ec6d..99260683a 100644
 +  isAutoAddToBacklog: boolean;
 +  pollingMode: 'whenProjectOpen' | 'always';
 +}
+diff --git c/packages/plugin-dev/gitea-issue-provider/src/plugin.ts i/packages/plugin-dev/gitea-issue-provider/src/plugin.ts
+index 1dfc8c06e..e07d27860 100644
+--- c/packages/plugin-dev/gitea-issue-provider/src/plugin.ts
++++ i/packages/plugin-dev/gitea-issue-provider/src/plugin.ts
+@@ -315 +315,5 @@ PluginAPI.registerIssueProvider({
+-    const params: Record<string, string> = { limit: '100', state: 'open' };
++    const params: Record<string, string> = {
++      limit: '100',
++      state: 'open',
++      type: 'issues',
++    };
+@@ -328,4 +332,13 @@ PluginAPI.registerIssueProvider({
+-    const opts: PluginHttpOptions = { params };
+-    const issues =
+-      (await http.get<GiteaIssue[]>(`${base}/repos/${cfg.repoFullname}/issues`, opts)) ||
+-      [];
++    const issues: GiteaIssue[] = [];
++    // Servers may cap pages below the requested limit. Continue until empty
++    // instead of comparing the response length with our requested page size.
++    for (let page = 1; ; page++) {
++      const opts: PluginHttpOptions = { params: { ...params, page: String(page) } };
++      const batch =
++        (await http.get<GiteaIssue[]>(
++          `${base}/repos/${cfg.repoFullname}/issues`,
++          opts,
++        )) || [];
++      if (batch.length === 0) break;
++      issues.push(...batch);
++    }
 diff --git c/src/app/plugins/allowed-plugin-actions.const.spec.ts i/src/app/plugins/allowed-plugin-actions.const.spec.ts
 new file mode 100644
 index 000000000..849008c4f

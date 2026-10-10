@@ -1,0 +1,42 @@
+diff --git i/docs/wiki/3.05-Web-App-vs-Desktop.md w/docs/wiki/3.05-Web-App-vs-Desktop.md
+index d5fe0f5bc..2f28cf6c7 100644
+--- i/docs/wiki/3.05-Web-App-vs-Desktop.md
++++ w/docs/wiki/3.05-Web-App-vs-Desktop.md
+@@ -134 +134,4 @@ The web version does not have:
+-- System tray integration.
++- System tray integration. The task picker lists unfinished ordinary tasks and
++  calendar events planned for Today. Repository-linked issues stay available
++  in the app without crowding the tray menu; their syncing and active timer
++  continue normally.
+diff --git i/src/app/features/tasks/store/task-electron.effects.spec.ts w/src/app/features/tasks/store/task-electron.effects.spec.ts
+index e7fee4c3d..2544a993d 100644
+--- i/src/app/features/tasks/store/task-electron.effects.spec.ts
++++ w/src/app/features/tasks/store/task-electron.effects.spec.ts
+@@ -94,0 +95,20 @@ describe('TaskElectronEffects', () => {
++  describe('syncTodayTasksToElectron$', () => {
++    it('keeps plain tasks and calendar events while hiding repository issues', () => {
++      const plain = { ...task, id: 'plain' };
++      const calendar: Task = { ...task, id: 'calendar', issueType: 'ICAL' };
++      const issue: Task = { ...task, id: 'issue', issueType: 'GITEA' };
++      const done = { ...task, id: 'done', isDone: true };
++      store.overrideSelector(selectTaskEntities, { plain, calendar, issue, done });
++      store.overrideSelector(selectTodayTaskIds, ['plain', 'issue', 'calendar', 'done']);
++      store.refreshState();
++      const spy = spyOn(window.ea, 'updateTodayTasks');
++      const sub = effects.syncTodayTasksToElectron$.subscribe();
++      sub.unsubscribe();
++      expect(spy.calls.mostRecent().args[0].map((t) => t.id)).toEqual([
++        'plain',
++        'calendar',
++      ]);
++      expect(issue.issueType).toBe('GITEA');
++    });
++  });
++
+diff --git i/src/app/features/tasks/store/task-electron.effects.ts w/src/app/features/tasks/store/task-electron.effects.ts
+index 42a2e2ca5..adf4fb9f3 100644
+--- i/src/app/features/tasks/store/task-electron.effects.ts
++++ w/src/app/features/tasks/store/task-electron.effects.ts
+@@ -95 +95 @@ export class TaskElectronEffects {
+-            .filter((t) => !!t && !t.isDone)
++            .filter((t) => !!t && !t.isDone && (!t.issueType || t.issueType === 'ICAL'))

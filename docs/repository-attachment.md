@@ -49,3 +49,11 @@ Apply the companion patch to v19.1.0, build/install the desktop app, upload the
 plugin ZIP, and reconnect the MCP client. Verify a read-only attachment probe
 before applying changes. Repository issue sync is complete only after the
 expected imported issue IDs have been checked in each project.
+
+## Tray task picker customization
+
+`app-tray-issue-filter.patch` is an optional companion patch for the local 19.1.0
+build. It hides repository-linked issues from the desktop tray task picker while
+retaining ordinary tasks and ICAL calendar events. It only filters the task list
+sent to Electron; tasks, dates, repository polling and current-task tracking are
+unchanged. Apply zero-context companion patches with `git apply --unidiff-zero`.

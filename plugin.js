@@ -1203,6 +1203,8 @@ function connection(provider) {
   return {
     id: provider.id, projectId: provider.defaultProjectId ?? provider.projectId,
     issueProviderKey: provider.issueProviderKey, isEnabled: provider.isEnabled,
+    configFormat: provider.configFormat || (provider.pluginConfig ? "plugin" : "native"),
+    pluginId: provider.pluginId,
     host: cfg.host, repoFullname: cfg.repoFullname, scope: cfg.scope,
     filterLabels: cfg.filterLabels || "", excludeLabels: cfg.excludeLabels || "",
     isAutoPoll: provider.isAutoPoll, isAutoAddToBacklog: provider.isAutoAddToBacklog,
@@ -1261,12 +1263,14 @@ async function attachGitea(payload = {}) {
   const result = { issueProviderId: id, projectId, ...cfg, ...settings, operation: existing ? "update" : "create" };
   if (payload.dryRun !== false) return { ...result, dryRun: true };
   const token = await readTokenFile(payload.tokenFile);
-  const changes = { ...settings, ...cfg, token };
+  const changes = existing?.configFormat === "native"
+    ? { ...settings, ...cfg, token }
+    : { ...settings, pluginConfig: { ...cfg, token } };
   const action = existing ? {
     type: UPDATE_ISSUE_PROVIDER, issueProvider: { id, changes },
   } : {
     type: ADD_ISSUE_PROVIDER, issueProvider: {
-      id, issueProviderKey: "GITEA",
+      id, issueProviderKey: "GITEA", pluginId: "gitea-issue-provider",
       pinnedSearch: null, defaultTagIds: [], defaultNote: null,
       isIntegratedAddTaskBar: false, ...changes,
     },

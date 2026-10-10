@@ -28,7 +28,7 @@ test("dry run plans attachment without reading token or writing", async () => {
 test("create verifies the connection and excludes credentials", async () => {
   setup(); const result = await attach({...input, dryRun: false, isAutoAddToBacklog: true, pollingMode: "always"});
   assert.equal(result.verified, true); assert.equal(providers.length, 1);
-  assert.equal(actions[0].meta.opType, "CRT"); assert.equal(actions[0].issueProvider.token, secret);
+  assert.equal(actions[0].meta.opType, "CRT"); assert.equal(actions[0].issueProvider.pluginConfig.token, secret);
   assert.ok(!JSON.stringify(result).includes(secret));
 });
 test("repeat apply reuses provider and updates settings", async () => {
@@ -73,4 +73,14 @@ test("validates host, repository and project", async () => {
   setup(); for (const host of ["file:///tmp", "https://name:secret@git.example.com", "https://git.example.com/path"]) await assert.rejects(attach({...input,host}), e => /host/.test(e.message));
   await assert.rejects(attach({...input,repoFullname:"bad"}), e => /owner\/repo/.test(e.message));
   await assert.rejects(attach({...input,projectId:"missing"}), e => /Project does not exist/.test(e.message));
+});
+
+test("updates native provider config without changing its representation", async () => {
+  const native = {...provider(), host: input.host, repoFullname: input.repoFullname, scope: "all", token: secret}; delete native.pluginConfig;
+  setup([native]); await attach({...input, dryRun:false, scope:"assigned-to-me"});
+  assert.equal(providers[0].scope, "assigned-to-me"); assert.equal(providers[0].pluginConfig, undefined);
+});
+test("updates v19.1 migrated plugin config rather than adding ignored top-level fields", async () => {
+  setup([provider()]); await attach({...input, dryRun:false, scope:"assigned-to-me"});
+  assert.equal(providers[0].pluginConfig.scope, "assigned-to-me"); assert.equal(providers[0].host, undefined);
 });

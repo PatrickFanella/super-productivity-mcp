@@ -1,24 +1,27 @@
---- a/packages/plugin-api/src/types.ts
-+++ b/packages/plugin-api/src/types.ts
-@@ -411,6 +411,9 @@
- 
-   batchUpdateForProject(request: BatchUpdateRequest): Promise<BatchUpdateResult>;
- 
-+  /** Read repository connection metadata without credentials. */
+diff --git c/docs/wiki/3.01-API.md i/docs/wiki/3.01-API.md
+index b934de363..275e2f064 100755
+--- c/docs/wiki/3.01-API.md
++++ i/docs/wiki/3.01-API.md
+@@ -616,0 +617,4 @@ pruning it, so an input-validation limit is not the stored clock size.
++
++### Repository connection metadata
++
++`PluginAPI.getIssueProviderConnections()` returns Gitea provider IDs, project IDs, repository addresses, and polling settings without tokens or other credentials. Plugins can dispatch the single-provider add/update actions; provider deletion and bulk import actions remain unavailable.
+diff --git c/packages/plugin-api/src/types.ts i/packages/plugin-api/src/types.ts
+index fad55ec6d..99260683a 100644
+--- c/packages/plugin-api/src/types.ts
++++ i/packages/plugin-api/src/types.ts
+@@ -663,0 +664,2 @@ export interface PluginAPI {
 +  getIssueProviderConnections(): Promise<IssueProviderConnection[]>;
 +
-   // projects
-   getAllProjects(): Promise<Project[]>;
- 
-@@ -619,3 +622,19 @@
- //   // For plugin development without window reference
- //   const PluginAPI: PluginAPI;
- // }
+@@ -925,0 +928,17 @@ export enum PluginIframeMessageType {
 +
 +export interface IssueProviderConnection {
 +  id: string;
 +  projectId: string | null;
 +  issueProviderKey: string;
++  pluginId?: string;
++  configFormat: 'plugin';
 +  isEnabled: boolean;
 +  host: string;
 +  repoFullname: string;
@@ -29,106 +32,214 @@
 +  isAutoAddToBacklog: boolean;
 +  pollingMode: 'whenProjectOpen' | 'always';
 +}
+diff --git c/src/app/plugins/allowed-plugin-actions.const.spec.ts i/src/app/plugins/allowed-plugin-actions.const.spec.ts
+new file mode 100644
+index 000000000..849008c4f
+--- /dev/null
++++ i/src/app/plugins/allowed-plugin-actions.const.spec.ts
+@@ -0,0 +1,24 @@
++import { isAllowedPluginAction } from './allowed-plugin-actions.const';
++import { IssueProviderActions } from '../features/issue/store/issue-provider.actions';
 +
---- a/src/app/plugins/plugin-api.ts
-+++ b/src/app/plugins/plugin-api.ts
-@@ -4,6 +4,7 @@
-   DialogCfg,
-   Hooks,
-   IssueProviderPluginDefinition,
++describe('Repository provider plugin actions', () => {
++  it('allows single-provider add and update', () => {
++    expect(
++      isAllowedPluginAction({ type: IssueProviderActions.addIssueProvider.type }),
++    ).toBeTrue();
++    expect(
++      isAllowedPluginAction({ type: IssueProviderActions.updateIssueProvider.type }),
++    ).toBeTrue();
++  });
++  it('keeps clear, bulk add and bulk update blocked', () => {
++    expect(
++      isAllowedPluginAction({ type: IssueProviderActions.clearIssueProviders.type }),
++    ).toBeFalse();
++    expect(
++      isAllowedPluginAction({ type: IssueProviderActions.addIssueProviders.type }),
++    ).toBeFalse();
++    expect(
++      isAllowedPluginAction({ type: IssueProviderActions.updateIssueProviders.type }),
++    ).toBeFalse();
++  });
++});
+diff --git c/src/app/plugins/allowed-plugin-actions.const.ts i/src/app/plugins/allowed-plugin-actions.const.ts
+index 47ac384c1..e2d7ef996 100644
+--- c/src/app/plugins/allowed-plugin-actions.const.ts
++++ i/src/app/plugins/allowed-plugin-actions.const.ts
+@@ -20,0 +21,2 @@ import {
++import { IssueProviderActions } from '../features/issue/store/issue-provider.actions';
++
+@@ -53,0 +56,4 @@ export const ALLOWED_PLUGIN_ACTIONS = [
++  // Repository connections (no delete or bulk-import capability).
++  IssueProviderActions.addIssueProvider,
++  IssueProviderActions.updateIssueProvider,
++
+diff --git c/src/app/plugins/plugin-api.ts i/src/app/plugins/plugin-api.ts
+index 846f6d9ae..dd10ab5cf 100644
+--- c/src/app/plugins/plugin-api.ts
++++ i/src/app/plugins/plugin-api.ts
+@@ -7,0 +8 @@ import {
 +  IssueProviderConnection,
-   NotifyCfg,
-   OAuthFlowConfig,
-   OAuthTokenResult,
-@@ -199,6 +200,10 @@
-     return this._pluginBridge.deleteTask(taskId);
-   }
- 
+@@ -252,0 +254,4 @@ export class PluginAPI implements PluginAPIInterface {
 +  async getIssueProviderConnections(): Promise<IssueProviderConnection[]> {
-+    return this._pluginBridge.getIssueProviderConnections();
++    return this.#boundMethods.getIssueProviderConnections();
 +  }
 +
-   async getAllProjects(): Promise<Project[]> {
-     PluginLog.log(`Plugin ${this._pluginId} requested all projects`);
-     const projects = await this._pluginBridge.getAllProjects();
---- a/src/app/plugins/plugin-bridge.service.ts
-+++ b/src/app/plugins/plugin-bridge.service.ts
-@@ -19,6 +19,7 @@
- } from './plugin-api.model';
- 
- import {
+diff --git c/src/app/plugins/plugin-bridge.service.ts i/src/app/plugins/plugin-bridge.service.ts
+index 94f3e3671..1ce81eb80 100644
+--- c/src/app/plugins/plugin-bridge.service.ts
++++ i/src/app/plugins/plugin-bridge.service.ts
+@@ -4,0 +5 @@ import { Store } from '@ngrx/store';
++import { PluginRepositoryConnectionsService } from './plugin-repository-connections.service';
+@@ -30,0 +32 @@ import {
 +  IssueProviderConnection,
-   BatchTaskCreate,
-   BatchUpdateRequest,
-   BatchUpdateResult,
-@@ -82,6 +83,7 @@
-   upsertSimpleCounter,
- } from '../features/simple-counter/store/simple-counter.actions';
- import { getDbDateStr } from '../util/get-db-date-str';
-+import { selectAll as selectAllIssueProviders } from '../features/issue/store/issue-provider.selectors';
- import { DataInitService } from '../core/data-init/data-init.service';
- 
- /**
-@@ -677,6 +679,30 @@
-   /**
-    * Get all projects
-    */
-+  async getIssueProviderConnections(): Promise<IssueProviderConnection[]> {
-+    const providers = await firstValueFrom(this._store.select(selectAllIssueProviders));
-+    return providers.filter((provider) => provider.issueProviderKey === 'GITEA').map((provider) => {
-+      // Old local builds stored config under pluginConfig. Never return the token.
-+      const legacy = (provider as unknown as { pluginConfig?: Record<string, unknown> }).pluginConfig;
-+      const config = (legacy && !('host' in provider) ? legacy : provider) as unknown as Record<string, unknown>;
-+      const text = (key: string): string => typeof config[key] === 'string' ? config[key] as string : '';
+@@ -134,8 +135,0 @@ type PluginDateFormat = 'short' | 'medium' | 'long' | 'time' | 'datetime';
+-/**
+- * PluginBridge acts as an intermediary layer between plugins and the main application services.
+- * This provides:
+- * - Clean separation of concerns
+- * - Controlled access to app functionality
+- * - Easy testing and mocking
+- * - Centralized plugin-to-app communication
+- */
+@@ -161,0 +156 @@ export class PluginBridgeService implements OnDestroy {
++  private _repositoryConnections = inject(PluginRepositoryConnectionsService);
+@@ -263,0 +259 @@ export class PluginBridgeService implements OnDestroy {
++    getIssueProviderConnections: () => Promise<IssueProviderConnection[]>;
+@@ -297,0 +294 @@ export class PluginBridgeService implements OnDestroy {
++      getIssueProviderConnections: () => this._repositoryConnections.getConnections(),
+diff --git c/src/app/plugins/plugin-repository-connections.service.spec.ts i/src/app/plugins/plugin-repository-connections.service.spec.ts
+new file mode 100644
+index 000000000..5b683bd2d
+--- /dev/null
++++ i/src/app/plugins/plugin-repository-connections.service.spec.ts
+@@ -0,0 +1,70 @@
++import { TestBed } from '@angular/core/testing';
++import { MockStore, provideMockStore } from '@ngrx/store/testing';
++import { IssueProviderGitea } from '../features/issue/issue.model';
++import {
++  PluginRepositoryConnectionsService,
++  repositoryConnections,
++} from './plugin-repository-connections.service';
++import { ISSUE_PROVIDER_FEATURE_KEY } from '../features/issue/store/issue-provider.reducer';
++
++const provider: IssueProviderGitea = {
++  id: 'gitea-one',
++  isEnabled: true,
++  issueProviderKey: 'GITEA',
++  pluginId: 'gitea-issue-provider',
++  defaultProjectId: 'project-one',
++  isAutoPoll: true,
++  isAutoAddToBacklog: false,
++  isIntegratedAddTaskBar: false,
++  pollingMode: 'always',
++  defaultTagIds: [],
++  pinnedSearch: null,
++  defaultNote: null,
++  pluginConfig: {
++    host: 'https://git.example.test',
++    repoFullname: 'owner/repo',
++    scope: 'all',
++    token: 'PRIVATE-TOKEN',
++    extraSecret: 'EXTRA-SECRET',
++  },
++};
++
++describe('PluginRepositoryConnectionsService', () => {
++  it('projects metadata from the v19.1 migrated Gitea shape without credentials', () => {
++    const output = repositoryConnections([provider]);
++    expect(output[0].host).toBe('https://git.example.test');
++    expect(output[0].repoFullname).toBe('owner/repo');
++    expect(output[0].configFormat).toBe('plugin');
++    expect(output[0].projectId).toBe('project-one');
++    expect(JSON.stringify(output)).not.toContain('PRIVATE-TOKEN');
++    expect(JSON.stringify(output)).not.toContain('EXTRA-SECRET');
++    expect(provider.pluginConfig['token']).toBe('PRIVATE-TOKEN');
++  });
++
++  it('reads current store state rather than a cached connection list', async () => {
++    TestBed.configureTestingModule({
++      providers: [PluginRepositoryConnectionsService, provideMockStore()],
++    });
++    const store = TestBed.inject(MockStore);
++    const service = TestBed.inject(PluginRepositoryConnectionsService);
++    store.setState({
++      [ISSUE_PROVIDER_FEATURE_KEY]: {
++        ids: [provider.id],
++        entities: { [provider.id]: provider },
++      },
++    });
++    expect((await service.getConnections())[0].repoFullname).toBe('owner/repo');
++    store.setState({
++      [ISSUE_PROVIDER_FEATURE_KEY]: {
++        ids: [provider.id],
++        entities: {
++          [provider.id]: {
++            ...provider,
++            pluginConfig: { ...provider.pluginConfig, repoFullname: 'owner/new' },
++          },
++        },
++      },
++    });
++    expect((await service.getConnections())[0].repoFullname).toBe('owner/new');
++  });
++});
+diff --git c/src/app/plugins/plugin-repository-connections.service.ts i/src/app/plugins/plugin-repository-connections.service.ts
+new file mode 100644
+index 000000000..3ec43919e
+--- /dev/null
++++ i/src/app/plugins/plugin-repository-connections.service.ts
+@@ -0,0 +1,45 @@
++import { inject, Injectable } from '@angular/core';
++import { Store } from '@ngrx/store';
++import { firstValueFrom } from 'rxjs';
++import { IssueProviderConnection } from '@super-productivity/plugin-api';
++import { selectAll } from '../features/issue/store/issue-provider.selectors';
++import { IssueProvider, IssueProviderGitea } from '../features/issue/issue.model';
++
++export const repositoryConnections = (
++  providers: IssueProvider[],
++): IssueProviderConnection[] =>
++  providers
++    .filter(
++      (provider): provider is IssueProviderGitea => provider.issueProviderKey === 'GITEA',
++    )
++    .map((provider): IssueProviderConnection => {
++      const cfg = provider.pluginConfig;
++      const text = (key: string): string =>
++        typeof cfg[key] === 'string' ? (cfg[key] as string) : '';
++      // Whitelist metadata: tokens and other provider credentials never leave this reader.
 +      return {
 +        id: provider.id,
 +        projectId: provider.defaultProjectId || null,
 +        issueProviderKey: provider.issueProviderKey,
++        pluginId: provider.pluginId,
++        configFormat: 'plugin',
 +        isEnabled: provider.isEnabled,
 +        host: text('host'),
 +        repoFullname: text('repoFullname'),
 +        scope: text('scope'),
 +        filterLabels: text('filterLabels'),
 +        excludeLabels: text('excludeLabels'),
-+        isAutoPoll: provider.isAutoPoll,
-+        isAutoAddToBacklog: provider.isAutoAddToBacklog,
-+        pollingMode: provider.pollingMode,
++        isAutoPoll: provider.isAutoPoll ?? false,
++        isAutoAddToBacklog: provider.isAutoAddToBacklog ?? false,
++        pollingMode: provider.pollingMode ?? 'whenProjectOpen',
 +      };
 +    });
++
++@Injectable({ providedIn: 'root' })
++export class PluginRepositoryConnectionsService {
++  private _store = inject(Store);
++
++  async getConnections(): Promise<IssueProviderConnection[]> {
++    return repositoryConnections(await firstValueFrom(this._store.select(selectAll)));
 +  }
-+
-   async getAllProjects(): Promise<ProjectCopy[]> {
-     const projects = await this._projectService.list$.pipe(first()).toPromise();
-     return projects || [];
---- a/src/app/plugins/util/plugin-iframe.util.ts
-+++ b/src/app/plugins/util/plugin-iframe.util.ts
-@@ -301,6 +301,7 @@
-           batchUpdateForProject: (request) => callApi('batchUpdateForProject', [request]),
- 
-           // Project methods
++}
+diff --git c/src/app/plugins/util/plugin-iframe.util.ts i/src/app/plugins/util/plugin-iframe.util.ts
+index c790a8e26..00523e5fe 100644
+--- c/src/app/plugins/util/plugin-iframe.util.ts
++++ i/src/app/plugins/util/plugin-iframe.util.ts
+@@ -49,0 +50 @@ const ALLOWED_IFRAME_API_METHODS = new Set([
++  'getIssueProviderConnections',
+@@ -422,0 +424 @@ export const createPluginApiScript = (config: PluginIframeConfig): string => {
 +          getIssueProviderConnections: () => callApi('getIssueProviderConnections'),
-           getAllProjects: () => callApi('getAllProjects'),
-           addProject: (projectData) => callApi('addProject', [projectData]),
-           updateProject: (projectId, updates) => callApi('updateProject', [projectId, updates]),
---- a/src/app/plugins/allowed-plugin-actions.const.ts
-+++ b/src/app/plugins/allowed-plugin-actions.const.ts
-@@ -17,6 +17,8 @@
-   toggleIssuePanel,
-   toggleShowNotes,
- } from '../core-ui/layout/store/layout.actions';
-+
-+import { IssueProviderActions } from '../features/issue/store/issue-provider.actions';
- 
- /**
-  * List of NgRx actions that plugins are allowed to dispatch.
-@@ -50,6 +52,10 @@
-   setCurrentTask,
-   setSelectedTask,
-   // addSubTask,
-+
-+  // Repository connections: add/update only; deletion and bulk import remain blocked.
-+  IssueProviderActions.addIssueProvider,
-+  IssueProviderActions.updateIssueProvider,
- 
-   // Project Management
-   // addProject,

@@ -46,6 +46,8 @@ Generated from `internal/catalog/tools.json`. Do not edit by hand; run `make gen
 | `get_projects` | `project.list` | List all projects |
 | `create_project` | `project.create` | Create a new project |
 | `update_project` | `project.update` | Update an existing project |
+| `get_repository_attachments` | `issueProvider.listConnections` | List Gitea repository connections without credentials. Requires an app build with getIssueProviderConnections. |
+| `attach_gitea_repository` | `issueProvider.attachGitea` | Create or update a project Gitea repository connection. Dry-run by default. Reuses existing providers and requires providerId for duplicates or retargeting. Apply reads a private tokenFile inside the desktop app and verifies persisted state. This configures polling; it does not claim an issue import has completed. |
 | `get_tags` | `tag.list` | List all tags |
 | `create_tag` | `tag.create` | Create a new tag |
 | `update_tag` | `tag.update` | Update an existing tag |

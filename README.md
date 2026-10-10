@@ -285,3 +285,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [MIT](LICENSE)
+
+### Repository attachment
+
+See [Gitea repository attachment](docs/repository-attachment.md) for the two provider tools, credential handling, companion app patch, and installation requirements.

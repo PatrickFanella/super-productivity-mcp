@@ -817,6 +817,80 @@
       }
     },
     {
+      "mcpName": "get_repository_attachments",
+      "action": "issueProvider.listConnections",
+      "description": "List Gitea repository connections without credentials. Requires an app build with getIssueProviderConnections.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "mcpName": "attach_gitea_repository",
+      "action": "issueProvider.attachGitea",
+      "description": "Create or update a project Gitea repository connection. Dry-run by default. Reuses existing providers and requires providerId for duplicates or retargeting. Apply reads a private tokenFile inside the desktop app and verifies persisted state. This configures polling; it does not claim an issue import has completed.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "projectId",
+          "host",
+          "repoFullname"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "repoFullname": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "tokenFile": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "all",
+              "created-by-me",
+              "assigned-to-me"
+            ]
+          },
+          "isAutoPoll": {
+            "type": "boolean"
+          },
+          "isAutoAddToBacklog": {
+            "type": "boolean"
+          },
+          "pollingMode": {
+            "type": "string",
+            "enum": [
+              "whenProjectOpen",
+              "always"
+            ]
+          },
+          "filterLabels": {
+            "type": "string"
+          },
+          "excludeLabels": {
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    {
       "mcpName": "get_tags",
       "action": "tag.list",
       "description": "List all tags",

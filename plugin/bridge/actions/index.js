@@ -8,6 +8,7 @@ const catalog = require("../tool-catalog.json");
 const handlers = {
   ...require("./task"),
   ...require("./project"),
+  ...require("./issue-provider"),
   ...require("./tag"),
   ...require("./system"),
 };

@@ -9,16 +9,16 @@ import (
 
 func TestCommandPromptReturnsTrimmedStdout(t *testing.T) {
 	p := CommandPrompt{
-		Name: "popup",
+		Name: "walker",
 		Args: []string{"--placeholder", "Add task..."},
 		Run: func(_ context.Context, name string, args []string) (CommandResult, error) {
-			if name != "popup" {
-				t.Fatalf("expected popup command, got %q", name)
+			if name != "walker" {
+				t.Fatalf("expected walker command, got %q", name)
 			}
 			if !reflect.DeepEqual(args, []string{"--placeholder", "Add task..."}) {
 				t.Fatalf("unexpected args: %+v", args)
 			}
-			return CommandResult{Stdout: "  Write popup docs @today\n"}, nil
+			return CommandResult{Stdout: "  Write walker docs @today\n"}, nil
 		},
 	}
 
@@ -27,14 +27,14 @@ func TestCommandPromptReturnsTrimmedStdout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prompt returned error: %v", err)
 	}
-	if title != "Write popup docs @today" {
+	if title != "Write walker docs @today" {
 		t.Fatalf("unexpected title %q", title)
 	}
 }
 
 func TestCommandPromptTreatsExitOneAsCancel(t *testing.T) {
 	p := CommandPrompt{
-		Name: "popup",
+		Name: "walker",
 		Run: func(context.Context, string, []string) (CommandResult, error) {
 			return CommandResult{ExitCode: 1}, ErrCommandExit
 		},
@@ -52,7 +52,7 @@ func TestCommandPromptTreatsExitOneAsCancel(t *testing.T) {
 
 func TestCommandPromptReturnsExitOneWithStderrAsFailure(t *testing.T) {
 	p := CommandPrompt{
-		Name: "popup",
+		Name: "walker",
 		Run: func(context.Context, string, []string) (CommandResult, error) {
 			return CommandResult{ExitCode: 1, Stderr: "cannot open display"}, ErrCommandExit
 		},
@@ -60,14 +60,14 @@ func TestCommandPromptReturnsExitOneWithStderrAsFailure(t *testing.T) {
 
 	_, err := p.Prompt(context.Background(), PromptOptions{})
 
-	if err == nil || err.Error() != "popup failed with exit code 1: cannot open display" {
+	if err == nil || err.Error() != "walker failed with exit code 1: cannot open display" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestCommandPromptReturnsNonCancelFailure(t *testing.T) {
 	p := CommandPrompt{
-		Name: "popup",
+		Name: "walker",
 		Run: func(context.Context, string, []string) (CommandResult, error) {
 			return CommandResult{ExitCode: 2, Stderr: "display unavailable"}, ErrCommandExit
 		},
@@ -75,14 +75,14 @@ func TestCommandPromptReturnsNonCancelFailure(t *testing.T) {
 
 	_, err := p.Prompt(context.Background(), PromptOptions{})
 
-	if err == nil || err.Error() != "popup failed with exit code 2: display unavailable" {
+	if err == nil || err.Error() != "walker failed with exit code 2: display unavailable" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestCommandPromptReturnsExecutionFailure(t *testing.T) {
 	p := CommandPrompt{
-		Name: "popup",
+		Name: "walker",
 		Run: func(context.Context, string, []string) (CommandResult, error) {
 			return CommandResult{}, errors.New("missing binary")
 		},

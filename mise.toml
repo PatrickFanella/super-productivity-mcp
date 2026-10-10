@@ -1,0 +1,6 @@
+[tools]
+go = "1.22"
+
+[settings]
+# Select Go from [tools], not the minimum supported version in go.mod.
+idiomatic_version_file_ignore_minimum_versions = true

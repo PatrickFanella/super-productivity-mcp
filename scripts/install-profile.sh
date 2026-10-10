@@ -17,7 +17,7 @@ Usage:
 Profiles:
   suite      Full suite install
   mcp        MCP binary + IPC data directory
-  quick-add  quick-add binary + popup assets + IPC data directory
+  quick-add  quick-add binary + IPC data directory
   plugin     Plugin zip only
   skill      Agent skill bundle only
 

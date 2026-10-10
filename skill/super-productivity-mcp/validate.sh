@@ -2,11 +2,14 @@
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SKILL_DIR/../.." && pwd)"
 COMMAND="${SP_MCP_COMMAND:-}"
-DATA_DIR="${SP_MCP_DATA_DIR:-${HOME}/.local/share/super-productivity-mcp}"
+DEFAULT_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+DATA_DIR="${SP_MCP_DATA_DIR:-$DEFAULT_DATA_HOME/super-productivity-mcp}"
 
-if [[ -z "$COMMAND" ]] && command -v sp-mcp >/dev/null 2>&1; then
-  COMMAND="$(command -v sp-mcp)"
+if [[ $# -gt 0 && "$1" != -* ]]; then
+  COMMAND="$1"
+  shift
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -20,7 +23,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      echo "usage: ./validate.sh [--command /path/to/sp-mcp] [--data-dir /path/to/ipc]"
+      echo "usage: ./validate.sh [/path/to/sp-mcp] [--command /path/to/sp-mcp] [--data-dir /path/to/ipc]"
       exit 0
       ;;
     *)
@@ -29,6 +32,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "$COMMAND" ]]; then
+  if command -v sp-mcp >/dev/null 2>&1; then
+    COMMAND="$(command -v sp-mcp)"
+  elif [[ -x "$ROOT_DIR/scripts/run-mcp.sh" ]]; then
+    COMMAND="$ROOT_DIR/scripts/run-mcp.sh"
+  fi
+fi
 
 if [[ -z "$COMMAND" || ! -x "$COMMAND" ]]; then
   echo "Super Productivity MCP command is missing or not executable: ${COMMAND:-<unset>}" >&2

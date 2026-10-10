@@ -28,7 +28,7 @@ Super Productivity plugin bridge
     ▲
     │  file IPC task.create
     │
-sp-quick-add  (desktop prompt / popup)
+sp-quick-add  (Walker prompt)
     │
     ▼
 Super Productivity PluginAPI
@@ -44,7 +44,7 @@ Super Productivity
 | Artifact | What it does | Install target |
 | --- | --- | --- |
 | `sp-mcp` | MCP server for AI clients | `make install-mcp` |
-| `sp-quick-add` + `quickadd-popup/` | Desktop quick-add launcher and popup assets | `make install-quick-add` |
+| `sp-quick-add` | Desktop quick-add launcher | `make install-quick-add` |
 | Super Productivity plugin zip | In-app bridge that executes catalog actions | `make install-plugin` or `make package-plugin` |
 | `skill/super-productivity-mcp` | Agent skill bundle and diagnostics | `make install-skill` |
 
@@ -74,16 +74,14 @@ Install only one artifact profile when you do not want the full suite:
 
 ```bash
 make install-mcp        # MCP binary + IPC data directory
-make install-quick-add  # quick-add binary + popup assets + IPC data directory
+make install-quick-add  # quick-add binary + IPC data directory
 make install-plugin     # plugin zip only
 make install-skill      # agent skill bundle only
 ```
 
 Those profile targets are thin adapters over `scripts/install-profile.sh`, which owns the install matrix. Use `scripts/install.sh` directly only when you need custom `SKIP_*` combinations.
 
-Honored env vars: `PREFIX`, `BIN_DIR`, `SHARE_DIR`, `BUILD_DIR`, `DATA_DIR`, `SKILLS_DIR`, `SKIP_BUILD`, `SKIP_MCP`, `SKIP_QUICK_ADD`, `SKIP_SKILL`, `SKIP_DATA_DIR`, `SKIP_PLUGIN_ZIP`. Defaults install to `~/.local/bin` and `~/.local/share/super-productivity-mcp`.
-
-If you override `SHARE_DIR` outside the default prefix layout, `sp-quick-add --prompt popup` will only find its popup assets when you also set `SP_QUICK_ADD_POPUP_DIR` or pass `--popup-dir`.
+Honored env vars: `PREFIX`, `BIN_DIR`, `BUILD_DIR`, `DATA_DIR`, `SKILLS_DIR`, `SKIP_BUILD`, `SKIP_MCP`, `SKIP_QUICK_ADD`, `SKIP_SKILL`, `SKIP_DATA_DIR`, `SKIP_PLUGIN_ZIP`. Defaults install to `~/.local/bin` and `~/.local/share/super-productivity-mcp`.
 
 ### Manual install
 
@@ -95,8 +93,6 @@ cd super-productivity-mcp
 go build -o sp-mcp ./cmd/sp-mcp
 go build -o sp-quick-add ./cmd/sp-quick-add
 ```
-
-If you want `sp-quick-add --prompt popup` without running `make install`, either run it from the repository root or set `SP_QUICK_ADD_POPUP_DIR` to the `quickadd-popup/` directory. The installer copies those assets to `~/.local/share/super-productivity-mcp/quickadd-popup`.
 
 #### 2. Install the plugin in Super Productivity
 
@@ -171,11 +167,10 @@ See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported t
 
 ## Omarchy / Hyprland quick add
 
-`sp-quick-add` opens a prompt and creates a Super Productivity task through the same plugin IPC bridge as the MCP server. It does not require `sp-mcp`, but it does require the Super Productivity plugin bridge to be installed and enabled. Walker remains the default prompt. A themeable GTK/Wayland popup is available with `--prompt popup`. Both support the same task title short syntax handled by `create_task` (`#tag`, `+project`, `@due`, estimates like `30m`).
+`sp-quick-add` opens a prompt and creates a Super Productivity task through the same plugin IPC bridge as the MCP server. It does not require `sp-mcp`, but it does require the Super Productivity plugin bridge to be installed and enabled. Walker provides the prompt. It supports the same task title short syntax handled by `create_task` (`#tag`, `+project`, `@due`, estimates like `30m`).
 
 ```bash
 sp-quick-add
-sp-quick-add --prompt popup
 sp-quick-add --title "Write docs @today #work 30m"
 sp-quick-add --dry-run --title "Smoke quick add @today"
 ```
@@ -185,29 +180,6 @@ Recommended Omarchy/Hyprland binding:
 ```conf
 bindd = SUPER SHIFT, T, Super Productivity quick add, exec, uwsm-app -- /home/you/.local/bin/sp-quick-add
 ```
-
-The prompt layer is intentionally isolated. Walker is the default today; richer prompt UIs can be added later without changing IPC or the Hyprland binding.
-
-To bind the popup instead of Walker:
-
-```conf
-bindd = SUPER SHIFT, T, Super Productivity quick add, exec, uwsm-app -- /home/you/.local/bin/sp-quick-add --prompt popup
-```
-
-Popup theme resolution order:
-
-1. `SP_QUICK_ADD_THEME_CSS`
-2. `~/.config/super-productivity-mcp/quick-add/style.css`
-3. `~/.config/omarchy/current/theme/colors.toml`
-4. built-in fallback CSS
-
-Popup asset lookup order:
-
-1. `SP_QUICK_ADD_POPUP_DIR`
-2. `quickadd-popup/` under the current working directory
-3. `<install-prefix>/share/super-productivity-mcp/quickadd-popup`
-
-If your popup assets live somewhere else because `SHARE_DIR` was customized, set `SP_QUICK_ADD_POPUP_DIR` or use `--popup-dir` with `sp-quick-add --prompt popup`.
 
 ## Available tools
 

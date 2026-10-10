@@ -41,7 +41,6 @@ test-install-profiles:
 		install -m 0755 /bin/true "$$build/sp-quick-add"; \
 		env \
 			-u BIN_DIR \
-			-u SHARE_DIR \
 			-u SKILLS_DIR \
 			-u SKIP_BUILD \
 			-u SKIP_MCP \
@@ -51,7 +50,6 @@ test-install-profiles:
 			-u SKIP_PLUGIN_ZIP \
 			PREFIX="$$prefix" \
 			BIN_DIR="$$prefix/bin" \
-			SHARE_DIR="$$prefix/share/super-productivity-mcp" \
 			BUILD_DIR="$$build" \
 			DATA_DIR="$$data" \
 			SKIP_BUILD=1 \
@@ -60,17 +58,14 @@ test-install-profiles:
 	run_install suite --set SKIP_SKILL=1 --set SKIP_PLUGIN_ZIP=1; \
 	test -x "$$TMP_ROOT/suite/prefix/bin/sp-mcp"; \
 	test -x "$$TMP_ROOT/suite/prefix/bin/sp-quick-add"; \
-	test -f "$$TMP_ROOT/suite/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
 	test -d "$$TMP_ROOT/suite/data/inbox"; \
 	run_install mcp; \
 	test -x "$$TMP_ROOT/mcp/prefix/bin/sp-mcp"; \
 	test ! -e "$$TMP_ROOT/mcp/prefix/bin/sp-quick-add"; \
-	test ! -e "$$TMP_ROOT/mcp/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
 	test -d "$$TMP_ROOT/mcp/data/inbox"; \
 	run_install quick-add; \
 	test ! -e "$$TMP_ROOT/quick-add/prefix/bin/sp-mcp"; \
 	test -x "$$TMP_ROOT/quick-add/prefix/bin/sp-quick-add"; \
-	test -f "$$TMP_ROOT/quick-add/prefix/share/super-productivity-mcp/quickadd-popup/popup.js"; \
 	test -d "$$TMP_ROOT/quick-add/data/inbox"; \
 	run_install skill --set SKILLS_DIR="$$TMP_ROOT/skill/skills"; \
 	test -f "$$TMP_ROOT/skill/skills/super-productivity-mcp/SKILL.md"; \
@@ -87,7 +82,6 @@ test-go:
 	go test ./...
 
 test-js:
-	node --check quickadd-popup/popup.js
 	node --test $$(find plugin -type f -name '*.test.js' -print | sort)
 
 test-e2e:

@@ -20,8 +20,8 @@ installable artifacts.
   events.
 - **MCP adapter** — the JSON-RPC/MCP layer that exposes catalog tools/resources
   and dispatches validated calls to the bridge.
-- **Quick-add workflow** — the user-facing shortcut flow: collect a title,
-  resolve prompt/popup assets and theme, create a task through the plugin
+- **Quick-add workflow** — the user-facing shortcut flow: collect a title through
+  Walker or a command argument, create a task through the plugin
   bridge, then notify the user.
 - **Skill bundle** — agent-facing instructions and diagnostics distributed with
   the suite. Skill bundles explain the contract; they do not define it.
@@ -46,7 +46,7 @@ installable artifacts.
 - The Go **Bridge** Interface is deliberately narrow. It is useful as the MCP
   adapter test surface and plugin IPC adapter seam, but it should not grow until
   there is a second production Adapter or more bridge behavior to hide.
-- The quick-add workflow owns title resolution, prompt/popup asset resolution,
+- The quick-add workflow owns title resolution, Walker prompting,
   bridge task creation, and user notifications behind `internal/quickadd`.
   `cmd/sp-quick-add` should stay a composition root for flags and runtime
   adapters.

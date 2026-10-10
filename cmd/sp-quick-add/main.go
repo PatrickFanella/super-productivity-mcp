@@ -18,8 +18,6 @@ type cliOptions struct {
 	prompt      string
 	noNotify    bool
 	placeholder string
-	popupDir    string
-	themeCSS    string
 }
 
 func main() {
@@ -35,10 +33,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	var prompt quickadd.PromptProvider
 	if opts.title == "" {
 		prompt, err = quickadd.NewPromptProvider(quickadd.PromptProviderOptions{
-			Mode:         opts.prompt,
-			Placeholder:  opts.placeholder,
-			PopupDir:     opts.popupDir,
-			ThemeCSSPath: opts.themeCSS,
+			Mode:        opts.prompt,
+			Placeholder: opts.placeholder,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "sp-quick-add: %v\n", err)
@@ -85,11 +81,9 @@ func parseOptions(args []string, stderr io.Writer) (cliOptions, error) {
 	fs.SetOutput(stderr)
 	fs.StringVar(&opts.title, "title", "", "task title to create without prompting")
 	fs.BoolVar(&opts.dryRun, "dry-run", false, "resolve the title but do not create a task")
-	fs.StringVar(&opts.prompt, "prompt", string(quickadd.PromptModeWalker), "prompt adapter: walker or popup")
+	fs.StringVar(&opts.prompt, "prompt", string(quickadd.PromptModeWalker), "prompt adapter: walker")
 	fs.BoolVar(&opts.noNotify, "no-notify", false, "disable notify-send success/failure notifications")
 	fs.StringVar(&opts.placeholder, "placeholder", quickadd.DefaultPlaceholder, "prompt placeholder text")
-	fs.StringVar(&opts.popupDir, "popup-dir", "", "directory containing quickadd-popup assets")
-	fs.StringVar(&opts.themeCSS, "theme-css", "", "custom popup CSS file")
 	if err := fs.Parse(args); err != nil {
 		return cliOptions{}, err
 	}

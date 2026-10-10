@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted, amended October 10, 2026 to remove the standalone GTK popup and its assets.
 
 ## Context
 
@@ -30,7 +30,7 @@ Keep one repository and treat it as an integrated Super Productivity suite with 
 Ship these artifacts from the same commit:
 
 1. `sp-mcp`
-2. `sp-quick-add` plus `quickadd-popup/` assets
+2. `sp-quick-add` with Walker prompting
 3. Super Productivity plugin zip
 4. `skill/super-productivity-mcp` bundle
 

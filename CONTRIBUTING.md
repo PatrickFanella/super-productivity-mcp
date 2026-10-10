@@ -11,7 +11,6 @@ git clone https://github.com/PatrickFanella/super-productivity-mcp.git
 cd super-productivity-mcp
 go build -o sp-mcp ./cmd/sp-mcp
 go build -o sp-quick-add ./cmd/sp-quick-add
-node --check quickadd-popup/popup.js
 ```
 
 ## Running tests

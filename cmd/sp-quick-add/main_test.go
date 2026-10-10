@@ -31,3 +31,21 @@ func TestRunDryRunDoesNotRequireBridge(t *testing.T) {
 		t.Fatalf("unexpected stdout %q", got)
 	}
 }
+
+func TestRemovedPopupOptionsAreRejected(t *testing.T) {
+	for _, args := range [][]string{
+		{"--prompt", "popup", "--dry-run", "--no-notify"},
+		{"--popup-dir", "/tmp", "--dry-run"},
+		{"--theme-css", "/tmp/style.css", "--dry-run"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(context.Background(), args, &stdout, &stderr); code == 0 {
+				t.Fatal("expected removed popup option to fail")
+			}
+			if stderr.Len() == 0 {
+				t.Fatal("expected an explanation for the unsupported option")
+			}
+		})
+	}
+}

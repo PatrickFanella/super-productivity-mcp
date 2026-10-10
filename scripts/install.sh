@@ -8,7 +8,7 @@
 #   PREFIX=/opt/sp scripts/install.sh     # override install prefix
 #   BUILD_DIR=/tmp/build scripts/install.sh  # build binaries outside the repo root
 #   SKIP_MCP=1 scripts/install.sh         # skip MCP binary build/install
-#   SKIP_QUICK_ADD=1 scripts/install.sh   # skip quick-add binary and popup assets
+#   SKIP_QUICK_ADD=1 scripts/install.sh   # skip quick-add binary
 #   SKIP_SKILL=1 scripts/install.sh       # skip bundled skill install
 #   SKIP_PLUGIN_ZIP=1 scripts/install.sh  # skip plugin zip packaging
 #   SKIP_BUILD=1 scripts/install.sh       # use existing requested binaries
@@ -19,7 +19,6 @@
 # Honored env vars:
 #   PREFIX          (default: $HOME/.local)
 #   BIN_DIR         (default: $PREFIX/bin)
-#   SHARE_DIR       (default: $PREFIX/share/super-productivity-mcp)
 #   BUILD_DIR       (default: $ROOT_DIR)
 #   DATA_DIR        (default: $XDG_DATA_HOME/super-productivity-mcp or
 #                    $HOME/.local/share/super-productivity-mcp)
@@ -35,7 +34,6 @@ cd "$ROOT_DIR"
 
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${BIN_DIR:-$PREFIX/bin}"
-SHARE_DIR="${SHARE_DIR:-$PREFIX/share/super-productivity-mcp}"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR}"
 
 if [[ -z "${DATA_DIR:-}" ]]; then
@@ -100,11 +98,6 @@ fi
 if [[ -z "${SKIP_QUICK_ADD:-}" ]]; then
   log "Installing binary to $BIN_DIR/sp-quick-add"
   install -m 0755 "$BUILD_DIR/sp-quick-add" "$BIN_DIR/sp-quick-add"
-
-  log "Installing quick-add popup assets to $SHARE_DIR/quickadd-popup"
-  mkdir -p "$SHARE_DIR/quickadd-popup"
-  install -m 0755 "$ROOT_DIR/quickadd-popup/popup.js" "$SHARE_DIR/quickadd-popup/popup.js"
-  install -m 0644 "$ROOT_DIR/quickadd-popup/style.css" "$SHARE_DIR/quickadd-popup/style.css"
 fi
 
 # 3. Create the IPC data directory.
@@ -151,7 +144,6 @@ fi
 
 MCP_SUMMARY="<skipped>"
 QUICK_ADD_SUMMARY="<skipped>"
-POPUP_SUMMARY="<skipped>"
 DATA_DIR_SUMMARY="$DATA_DIR"
 SKILL_SUMMARY="${SKILL_SUMMARY:-<skipped>}"
 
@@ -163,7 +155,6 @@ if [[ -z "${SKIP_MCP:-}" ]]; then
 fi
 if [[ -z "${SKIP_QUICK_ADD:-}" ]]; then
   QUICK_ADD_SUMMARY="$BIN_DIR/sp-quick-add"
-  POPUP_SUMMARY="$SHARE_DIR/quickadd-popup"
 fi
 
 # 6. Print install summary + profile-specific follow-up instructions.
@@ -174,7 +165,6 @@ ${GREEN}Install complete.${RESET}
 
   mcp:       $MCP_SUMMARY
   quick add: $QUICK_ADD_SUMMARY
-  popup:     $POPUP_SUMMARY
   data dir:  $DATA_DIR_SUMMARY
   skill:     $SKILL_SUMMARY
   plugin:    $PLUGIN_ZIP

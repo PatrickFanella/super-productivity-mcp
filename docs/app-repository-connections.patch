@@ -1,0 +1,134 @@
+--- a/packages/plugin-api/src/types.ts
++++ b/packages/plugin-api/src/types.ts
+@@ -411,6 +411,9 @@
+ 
+   batchUpdateForProject(request: BatchUpdateRequest): Promise<BatchUpdateResult>;
+ 
++  /** Read repository connection metadata without credentials. */
++  getIssueProviderConnections(): Promise<IssueProviderConnection[]>;
++
+   // projects
+   getAllProjects(): Promise<Project[]>;
+ 
+@@ -619,3 +622,19 @@
+ //   // For plugin development without window reference
+ //   const PluginAPI: PluginAPI;
+ // }
++
++export interface IssueProviderConnection {
++  id: string;
++  projectId: string | null;
++  issueProviderKey: string;
++  isEnabled: boolean;
++  host: string;
++  repoFullname: string;
++  scope: string;
++  filterLabels: string;
++  excludeLabels: string;
++  isAutoPoll: boolean;
++  isAutoAddToBacklog: boolean;
++  pollingMode: 'whenProjectOpen' | 'always';
++}
++
+--- a/src/app/plugins/plugin-api.ts
++++ b/src/app/plugins/plugin-api.ts
+@@ -4,6 +4,7 @@
+   DialogCfg,
+   Hooks,
+   IssueProviderPluginDefinition,
++  IssueProviderConnection,
+   NotifyCfg,
+   OAuthFlowConfig,
+   OAuthTokenResult,
+@@ -199,6 +200,10 @@
+     return this._pluginBridge.deleteTask(taskId);
+   }
+ 
++  async getIssueProviderConnections(): Promise<IssueProviderConnection[]> {
++    return this._pluginBridge.getIssueProviderConnections();
++  }
++
+   async getAllProjects(): Promise<Project[]> {
+     PluginLog.log(`Plugin ${this._pluginId} requested all projects`);
+     const projects = await this._pluginBridge.getAllProjects();
+--- a/src/app/plugins/plugin-bridge.service.ts
++++ b/src/app/plugins/plugin-bridge.service.ts
+@@ -19,6 +19,7 @@
+ } from './plugin-api.model';
+ 
+ import {
++  IssueProviderConnection,
+   BatchTaskCreate,
+   BatchUpdateRequest,
+   BatchUpdateResult,
+@@ -82,6 +83,7 @@
+   upsertSimpleCounter,
+ } from '../features/simple-counter/store/simple-counter.actions';
+ import { getDbDateStr } from '../util/get-db-date-str';
++import { selectAll as selectAllIssueProviders } from '../features/issue/store/issue-provider.selectors';
+ import { DataInitService } from '../core/data-init/data-init.service';
+ 
+ /**
+@@ -677,6 +679,30 @@
+   /**
+    * Get all projects
+    */
++  async getIssueProviderConnections(): Promise<IssueProviderConnection[]> {
++    const providers = await firstValueFrom(this._store.select(selectAllIssueProviders));
++    return providers.filter((provider) => provider.issueProviderKey === 'GITEA').map((provider) => {
++      // Old local builds stored config under pluginConfig. Never return the token.
++      const legacy = (provider as unknown as { pluginConfig?: Record<string, unknown> }).pluginConfig;
++      const config = (legacy && !('host' in provider) ? legacy : provider) as unknown as Record<string, unknown>;
++      const text = (key: string): string => typeof config[key] === 'string' ? config[key] as string : '';
++      return {
++        id: provider.id,
++        projectId: provider.defaultProjectId || null,
++        issueProviderKey: provider.issueProviderKey,
++        isEnabled: provider.isEnabled,
++        host: text('host'),
++        repoFullname: text('repoFullname'),
++        scope: text('scope'),
++        filterLabels: text('filterLabels'),
++        excludeLabels: text('excludeLabels'),
++        isAutoPoll: provider.isAutoPoll,
++        isAutoAddToBacklog: provider.isAutoAddToBacklog,
++        pollingMode: provider.pollingMode,
++      };
++    });
++  }
++
+   async getAllProjects(): Promise<ProjectCopy[]> {
+     const projects = await this._projectService.list$.pipe(first()).toPromise();
+     return projects || [];
+--- a/src/app/plugins/util/plugin-iframe.util.ts
++++ b/src/app/plugins/util/plugin-iframe.util.ts
+@@ -301,6 +301,7 @@
+           batchUpdateForProject: (request) => callApi('batchUpdateForProject', [request]),
+ 
+           // Project methods
++          getIssueProviderConnections: () => callApi('getIssueProviderConnections'),
+           getAllProjects: () => callApi('getAllProjects'),
+           addProject: (projectData) => callApi('addProject', [projectData]),
+           updateProject: (projectId, updates) => callApi('updateProject', [projectId, updates]),
+--- a/src/app/plugins/allowed-plugin-actions.const.ts
++++ b/src/app/plugins/allowed-plugin-actions.const.ts
+@@ -17,6 +17,8 @@
+   toggleIssuePanel,
+   toggleShowNotes,
+ } from '../core-ui/layout/store/layout.actions';
++
++import { IssueProviderActions } from '../features/issue/store/issue-provider.actions';
+ 
+ /**
+  * List of NgRx actions that plugins are allowed to dispatch.
+@@ -50,6 +52,10 @@
+   setCurrentTask,
+   setSelectedTask,
+   // addSubTask,
++
++  // Repository connections: add/update only; deletion and bulk import remain blocked.
++  IssueProviderActions.addIssueProvider,
++  IssueProviderActions.updateIssueProvider,
+ 
+   // Project Management
+   // addProject,

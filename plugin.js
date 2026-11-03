@@ -202,12 +202,57 @@
 
   async function taskCreate(payload) {
     const data = await buildTaskData(payload);
+    // Validate recurrence before the task exists, so a bad repeat argument
+    // never leaves a half-made task behind.
+    const recurrence = payload.repeat
+      ? buildRepeatRecurrence(payload.repeat, {
+          startDate: valueOf(payload, 'dueDate', 'due_date') || localDateStr(new Date()),
+          startTime: valueOf(payload, 'dueTime', 'due_time'),
+        })
+      : null;
     const taskId = await PluginAPI.addTask(data);
-    return { taskId };
+    if (!recurrence) return { taskId };
+    // The task exists now. Report a recurrence failure next to the id instead
+    // of throwing, so the caller does not retry and create a duplicate.
+    try {
+      const result = await taskSetRecurrence({ taskId, recurrence });
+      return { taskId, repeatCfgId: result.repeatCfgId };
+    } catch (error) {
+      return {
+        taskId,
+        recurrenceError: { code: (error && error.code) || 'RECURRENCE_FAILED', message: (error && error.message) || String(error) },
+      };
+    }
+  }
+
+  const DUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const DUE_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  function isCalendarDay(day) {
+    if (typeof day !== 'string' || !DUE_DATE_RE.test(day)) return false;
+    const [year, month, date] = day.split('-').map(Number);
+    const utc = new Date(Date.UTC(year, month - 1, date));
+    return year >= 1000 && utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === date;
+  }
+
+  function explicitDue(payload) {
+    const dueDate = valueOf(payload, 'dueDate', 'due_date');
+    const dueTime = valueOf(payload, 'dueTime', 'due_time');
+    if (dueDate === undefined) {
+      if (dueTime !== undefined) throw typedError('INVALID_REQUEST', 'dueTime requires dueDate', false);
+      return {};
+    }
+    if (!isCalendarDay(dueDate)) throw typedError('INVALID_REQUEST', 'dueDate must be a calendar day as YYYY-MM-DD', false);
+    if (dueTime === undefined) return { dueDay: dueDate };
+    if (typeof dueTime !== 'string' || !DUE_TIME_RE.test(dueTime)) throw typedError('INVALID_REQUEST', 'dueTime must be a 24-hour time as HH:MM', false);
+    const [year, month, date] = dueDate.split('-').map(Number);
+    const [hour, minute] = dueTime.split(':').map(Number);
+    return { dueDay: dueDate, dueWithTime: new Date(year, month - 1, date, hour, minute).getTime() };
   }
 
   async function buildTaskData(payload) {
-    const parsed = await parseTaskShortSyntax(payload.title || '');
+    const literal = payload.literal === true;
+    const parsed = literal ? { title: payload.title || '', tagIds: [] } : await parseTaskShortSyntax(payload.title || '');
     const data = {
       title: parsed.title,
       notes: payload.notes || '',
@@ -219,6 +264,13 @@
     if (parsed.timeSpent != null) data.timeSpent = parsed.timeSpent;
     if (parsed.dueDay != null) data.dueDay = parsed.dueDay;
     if (parsed.dueWithTime != null) data.dueWithTime = parsed.dueWithTime;
+    // Explicit fields win over anything parsed from the title.
+    const due = explicitDue(payload);
+    if (due.dueDay != null) {
+      data.dueDay = due.dueDay;
+      delete data.dueWithTime;
+    }
+    if (due.dueWithTime != null) data.dueWithTime = due.dueWithTime;
     return data;
   }
 
@@ -345,8 +397,13 @@
     if (typeof isDone === 'boolean') tasks = tasks.filter((t) => !!t.isDone === isDone);
     const isArchived = valueOf(payload, 'isArchived', 'is_archived');
     if (typeof isArchived === 'boolean') tasks = tasks.filter((t) => !!t.isArchived === isArchived);
-    const search = String(payload.search || '').trim().toLowerCase();
-    if (search) tasks = tasks.filter((t) => ((t.title || '') + '\n' + (t.notes || '')).toLowerCase().includes(search));
+    const search = String(payload.search || payload.query || '').trim().toLowerCase();
+    if (search) {
+      // searchNotes:false is set by the server when the connection may not
+      // read notes, so a search cannot reveal note contents.
+      const searchNotes = payload.searchNotes !== false;
+      tasks = tasks.filter((t) => ((t.title || '') + (searchNotes ? '\n' + (t.notes || '') : '')).toLowerCase().includes(search));
+    }
     if (valueOf(payload, 'parentsOnly', 'parents_only')) tasks = tasks.filter((t) => !t.parentId);
     if (payload.overdue) {
       const today = localDateStr(new Date());
@@ -361,10 +418,13 @@
     }
     if (valueOf(payload, 'recurringOnly', 'recurring_only')) tasks = tasks.filter((t) => !!(t.repeatCfgId || t.recurrenceRule || t.repeatCycle));
     if (valueOf(payload, 'includeSynthetic', 'include_synthetic')) tasks = await withSyntheticTaskFields(tasks);
+    const matched = tasks.length;
     tasks = sortAndPageTasks(tasks, payload);
+    const offset = Math.max(0, Number(payload.offset || 0));
     const fields = Array.isArray(payload.fields) ? payload.fields : [];
     if (fields.length > 0) tasks = tasks.map((task) => pickFields(task, fields));
-    return { tasks };
+    // truncated: more tasks matched than were returned after offset/limit.
+    return { tasks, truncated: offset + tasks.length < matched };
   }
 
   async function taskArchivedList(payload) {
@@ -448,8 +508,10 @@
   }
 
   async function taskGet(payload) {
-    const task = await findTask(payload.taskId);
-    if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + payload.taskId + ' not found', false);
+    const taskId = valueOf(payload || {}, 'taskId', 'task_id') || (payload && payload.id);
+    if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
+    const task = await findTask(taskId);
+    if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
     return { task };
   }
 
@@ -612,6 +674,46 @@
     for (const day of WEEKDAYS) setIfPresent(changes, input, day, day);
     if (Object.keys(changes).length === 0) throw typedError('NO_UPDATE_FIELDS', 'No recurrence changes provided', false);
     return changes;
+  }
+
+  const REPEAT_ARG_CYCLES = ['daily', 'weekly', 'monthly', 'yearly'];
+  const REPEAT_ARG_WEEKDAYS = { mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday', sun: 'sunday' };
+  const REPEAT_EVERY_MAX = 99;
+
+  // Turns the compact create_task repeat argument ({ cycle, every?, weekdays? })
+  // into the recurrence object taskSetRecurrence accepts.
+  function buildRepeatRecurrence(repeat, opts) {
+    if (typeof PluginAPI.dispatchAction !== 'function') {
+      throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.dispatchAction is required for recurrence tools', false);
+    }
+    if (!repeat || typeof repeat !== 'object' || Array.isArray(repeat)) throw typedError('INVALID_REQUEST', 'repeat must be an object', false);
+    const unknown = Object.keys(repeat).find((key) => !['cycle', 'every', 'weekdays'].includes(key));
+    if (unknown) throw typedError('INVALID_REQUEST', 'Unknown argument: repeat.' + unknown, false);
+    if (!REPEAT_ARG_CYCLES.includes(repeat.cycle)) throw typedError('INVALID_REQUEST', 'repeat.cycle must be one of ' + REPEAT_ARG_CYCLES.join(', '), false);
+    const every = repeat.every == null ? 1 : repeat.every;
+    if (!Number.isInteger(every) || every < 1 || every > REPEAT_EVERY_MAX) {
+      throw typedError('INVALID_REQUEST', 'repeat.every must be a whole number from 1 to ' + REPEAT_EVERY_MAX, false);
+    }
+    const repeatCycle = repeat.cycle.toUpperCase();
+    const recurrence = {
+      repeatCycle,
+      repeatEvery: every,
+      quickSetting: repeatCycle === 'DAILY' && every === 1 ? 'DAILY' : 'CUSTOM',
+      startDate: opts.startDate,
+    };
+    if (opts.startTime) recurrence.startTime = opts.startTime;
+    if (repeat.weekdays !== undefined) {
+      if (repeat.cycle !== 'weekly') throw typedError('INVALID_REQUEST', 'repeat.weekdays needs cycle weekly', false);
+      const days = repeat.weekdays;
+      if (!Array.isArray(days) || days.length === 0 || new Set(days).size !== days.length || !days.every((day) => REPEAT_ARG_WEEKDAYS[day])) {
+        throw typedError('INVALID_REQUEST', 'repeat.weekdays must be distinct days out of ' + Object.keys(REPEAT_ARG_WEEKDAYS).join(', '), false);
+      }
+      for (const day of days) recurrence[REPEAT_ARG_WEEKDAYS[day]] = true;
+    } else if (repeatCycle === 'WEEKLY') {
+      const [year, month, date] = opts.startDate.split('-').map(Number);
+      recurrence[WEEKDAYS[(new Date(year, month - 1, date).getDay() + 6) % 7]] = true;
+    }
+    return recurrence;
   }
 
   async function taskSetRecurrence(payload) {
@@ -1382,6 +1484,7 @@ async function attachGitea(payload = {}) {
     },
     'bridge.health': async () => ({ ok: true, message: 'bridge alive', dirs }),
     'bridge.checkConnection': async () => ({ ok: true, message: 'bridge alive', dirs }),
+    'bridge.status': async () => ({ isReady: true, pluginVersion: '0.1.0', protocolVersion: PROTOCOL_VERSION }),
     'bridge.debugDirectories': async () => ({ ok: true, dirs }),
     'bridge.capabilities': async () => ({ supportedActions, pluginVersion: '0.1.0', protocolVersion: PROTOCOL_VERSION }),
   };

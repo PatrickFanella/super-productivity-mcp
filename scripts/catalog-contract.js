@@ -85,6 +85,8 @@ function validateCatalogShape(catalog = readCatalog()) {
   const knownActions = new Set();
   const seenActions = new Set();
   const seenNames = new Set();
+  const toolScopes = new Set(["read", "create", "write"]);
+  const annotationKeys = new Set(["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"]);
 
   for (const [index, tool] of (tools || []).entries()) {
     if (!isPlainObject(tool)) {
@@ -100,6 +102,20 @@ function validateCatalogShape(catalog = readCatalog()) {
       seenActions.add(tool.action);
       knownActions.add(tool.action);
     }
+    if (tool.scope !== undefined && !toolScopes.has(tool.scope)) errors.push(`tools[${index}].scope must be one of ${[...toolScopes].join(", ")}`);
+    if (tool.title !== undefined && (typeof tool.title !== "string" || !tool.title.trim())) errors.push(`tools[${index}].title must be a non-empty string when present`);
+    if (tool.annotations !== undefined) {
+      if (!isPlainObject(tool.annotations)) {
+        errors.push(`tools[${index}].annotations must be an object when present`);
+      } else {
+        for (const [key, value] of Object.entries(tool.annotations)) {
+          if (!annotationKeys.has(key) || typeof value !== "boolean") errors.push(`tools[${index}].annotations.${key} must be a known boolean hint`);
+        }
+      }
+    }
+    if (tool.aliases !== undefined && (!Array.isArray(tool.aliases) || tool.aliases.some((alias) => typeof alias !== "string" || !alias.trim()))) {
+      errors.push(`tools[${index}].aliases must be an array of non-empty strings when present`);
+    }
     if (tool.mcpName !== undefined) {
       if (typeof tool.mcpName !== "string" || !tool.mcpName.trim()) {
         errors.push(`tools[${index}].mcpName must be a non-empty string when present`);
@@ -108,6 +124,14 @@ function validateCatalogShape(catalog = readCatalog()) {
       } else {
         seenNames.add(tool.mcpName);
       }
+    }
+  }
+
+  // Aliases share the name space with mcpName values.
+  for (const tool of tools || []) {
+    for (const alias of (isPlainObject(tool) && Array.isArray(tool.aliases) ? tool.aliases : [])) {
+      if (seenNames.has(alias)) errors.push(`alias collides with another tool name: ${alias}`);
+      else seenNames.add(alias);
     }
   }
 

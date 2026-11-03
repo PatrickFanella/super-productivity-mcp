@@ -207,7 +207,53 @@ async function taskDeleteRecurrence(payload) {
   return { repeatCfgId: task.repeatCfgId, deleted: true };
 }
 
+const REPEAT_ARG_CYCLES = ["daily", "weekly", "monthly", "yearly"];
+const REPEAT_ARG_WEEKDAYS = { mon: "monday", tue: "tuesday", wed: "wednesday", thu: "thursday", fri: "friday", sat: "saturday", sun: "sunday" };
+const REPEAT_EVERY_MAX = 99;
+
+// Turns the compact create_task \`repeat\` argument ({ cycle, every?, weekdays? })
+// into the recurrence object taskSetRecurrence accepts. Throws INVALID_REQUEST
+// for bad input, before any task is created.
+function buildRepeatRecurrence(repeat, { startDate, startTime }) {
+  assertDispatchActionAvailable();
+  if (!repeat || typeof repeat !== "object" || Array.isArray(repeat)) {
+    throw typedError("INVALID_REQUEST", "repeat must be an object", false);
+  }
+  const unknown = Object.keys(repeat).find((key) => !["cycle", "every", "weekdays"].includes(key));
+  if (unknown) throw typedError("INVALID_REQUEST", `Unknown argument: repeat.${unknown}`, false);
+  if (!REPEAT_ARG_CYCLES.includes(repeat.cycle)) {
+    throw typedError("INVALID_REQUEST", `repeat.cycle must be one of ${REPEAT_ARG_CYCLES.join(", ")}`, false);
+  }
+  const every = repeat.every == null ? 1 : repeat.every;
+  if (!Number.isInteger(every) || every < 1 || every > REPEAT_EVERY_MAX) {
+    throw typedError("INVALID_REQUEST", `repeat.every must be a whole number from 1 to ${REPEAT_EVERY_MAX}`, false);
+  }
+  const repeatCycle = repeat.cycle.toUpperCase();
+  const recurrence = {
+    repeatCycle,
+    repeatEvery: every,
+    // DAILY quickSetting means every day; any other interval is CUSTOM.
+    quickSetting: repeatCycle === "DAILY" && every === 1 ? "DAILY" : "CUSTOM",
+    startDate,
+  };
+  if (startTime) recurrence.startTime = startTime;
+  if (repeat.weekdays !== undefined) {
+    if (repeat.cycle !== "weekly") throw typedError("INVALID_REQUEST", "repeat.weekdays needs cycle weekly", false);
+    const days = repeat.weekdays;
+    if (!Array.isArray(days) || days.length === 0 || new Set(days).size !== days.length || !days.every((day) => REPEAT_ARG_WEEKDAYS[day])) {
+      throw typedError("INVALID_REQUEST", `repeat.weekdays must be distinct days out of ${Object.keys(REPEAT_ARG_WEEKDAYS).join(", ")}`, false);
+    }
+    for (const day of days) recurrence[REPEAT_ARG_WEEKDAYS[day]] = true;
+  } else if (repeatCycle === "WEEKLY") {
+    // Default: the start day's weekday.
+    const [year, month, date] = startDate.split("-").map(Number);
+    recurrence[WEEKDAYS[(new Date(year, month - 1, date).getDay() + 6) % 7]] = true;
+  }
+  return recurrence;
+}
+
 module.exports = {
+  buildRepeatRecurrence,
   taskDeleteRecurrence,
   taskSetRecurrence,
   taskUpdateRecurrence,

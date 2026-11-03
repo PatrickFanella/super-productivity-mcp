@@ -19,11 +19,15 @@ lines.push("Generated from `internal/catalog/tools.json`. Do not edit by hand; r
 lines.push("");
 lines.push("## Tools");
 lines.push("");
-lines.push(row(["Tool", "Action", "Description"]));
-lines.push(row(["---", "---", "---"]));
+lines.push("Scope is the `SP_MCP_SCOPES` entry a tool needs; tools without one are always available. Aliases resolve to the same tool.");
+lines.push("");
+lines.push(row(["Tool", "Action", "Scope", "Description"]));
+lines.push(row(["---", "---", "---", "---"]));
 for (const tool of catalog.tools) {
   if (tool.internal) continue;
-  lines.push(row([`\`${tool.mcpName}\``, `\`${tool.action}\``, tool.description]));
+  const aliases = (tool.aliases || []).map((alias) => `\`${alias}\``).join(", ");
+  const name = aliases ? `\`${tool.mcpName}\` (alias: ${aliases})` : `\`${tool.mcpName}\``;
+  lines.push(row([name, `\`${tool.action}\``, tool.scope || "-", tool.description]));
 }
 lines.push("");
 lines.push("## Resources");

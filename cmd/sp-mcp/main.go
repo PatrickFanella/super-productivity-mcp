@@ -26,7 +26,13 @@ func main() {
 		logger.Error("failed to init bridge", "error", err)
 		os.Exit(1)
 	}
-	server := mcpadapter.New(logger, bridge, cat)
+	if len(cfg.InvalidScopes) > 0 {
+		logger.Warn("ignoring unknown SP_MCP_SCOPES entries", "invalid", cfg.InvalidScopes, "granted", cfg.Scopes)
+	}
+	server := mcpadapter.NewWithOptions(logger, bridge, cat, mcpadapter.Options{
+		Scopes:           cfg.Scopes,
+		MaxResponseBytes: cfg.MaxResponseBytes,
+	})
 	if err := server.Serve(context.Background(), os.Stdin, os.Stdout); err != nil {
 		logger.Error("server exited", "error", err)
 		os.Exit(1)

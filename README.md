@@ -158,12 +158,31 @@ OpenCode example:
 | `SP_MCP_LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 | `SP_MCP_TIMEOUT` | `30s` | Per-request timeout (e.g. `10s`, `60s`) |
 | `SP_MCP_RETRIES` | `3` | Number of retries on transient bridge errors |
+| `SP_MCP_SCOPES` | all scopes | Comma-separated access grant: `read`, `notes`, `create`, `write` (or `all`). See [Access scopes](#access-scopes) |
+| `SP_MCP_MAX_RESPONSE_BYTES` | `0` (no cap) | Refuse tool and resource results larger than this many bytes with `RESPONSE_TOO_LARGE` |
 | `SP_LOCAL_REST_URL` / `SUPER_PRODUCTIVITY_REST_URL` | unset | Optional Super Productivity local REST base URL used for true archive operations |
 | `SP_LOCAL_REST_TOKEN` | unset | Optional bearer token for the local REST API |
 
 The plugin inside Super Productivity must be configured to use the **same** `SP_MCP_DATA_DIR`.
 
 See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported tools, fallbacks, and troubleshooting.
+
+### Access scopes
+
+`SP_MCP_SCOPES` limits what a client connected to this server can see and do. Leaving it unset grants every scope, which is the behaviour before scopes existed.
+
+| Scope | Grants |
+|-------|--------|
+| `read` | Read-only tools and all `sp://` resources |
+| `notes` | Task notes in results, and `search` matching note text. Without it, every `notes` field is removed from results and searches match titles only |
+| `create` | `create_task` and `create_task_with_subtasks` |
+| `write` | Every other tool that changes data |
+
+`get_status`, `check_connection`, `bridge_health`, `debug_directories` and `bridge_capabilities` are always available. Tools outside the grant are left out of `tools/list` and refused with `NOT_PERMITTED`. Unknown scope names are logged and ignored, so a value with no valid scope grants only the status tools. Each tool's scope is listed in [`docs/tools.md`](docs/tools.md).
+
+Examples: `read,notes` for a read-only assistant; `create` for capture only; `read,create` to look things up and add tasks without editing.
+
+The scope is set per server process, so give each client its own MCP server entry when they need different grants. It limits what the MCP client can ask for; it is not a boundary against anything else that can write to `SP_MCP_DATA_DIR` or that runs inside Super Productivity.
 
 ## Omarchy / Hyprland quick add
 
@@ -193,6 +212,10 @@ manual list in this README.
 
 Safety notes:
 
+- Every tool advertises a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so clients can ask for confirmation before destructive calls. Read tools state that titles and notes are user data, not instructions.
+- `create_task` accepts `dueDate`, `dueTime` and a compact `repeat` (`{ "cycle": "weekly", "every": 2, "weekdays": ["mon", "thu"] }`). Pass `literal:true` to keep `#tag`, `+project`, `@date` and estimates in the title as plain text, which is the safer choice for text that came from somewhere else. If the task is created but the recurrence fails, the result carries `taskId` and `recurrenceError` instead of failing, so a retry does not duplicate the task.
+- When a non-idempotent write times out after the plugin picked it up, the error is `OUTCOME_UNKNOWN` (not retryable): check the current state before retrying.
+- `list_tasks`, `list_projects` and `list_tags` are aliases of `get_tasks`, `get_projects` and `get_tags`, matching Super Productivity's built-in MCP. `get_tasks` also reports `truncated` when `limit` or `offset` left matches out.
 - Broad schedule and note writes are dry-run-first where possible. Use `dryRun:false` plus `confirmApply:true` only after inspecting returned diffs.
 - True archive/restore uses the optional Local REST API. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied, and `restore_task` is unavailable.
 - Recurrence tools require a Super Productivity build whose plugin sandbox allows repeat-config actions. For non-interactive automation, call `update_task_recurrence` without `isAskToUpdateAllTaskInstances` or set it to `false`; setting it to `true` intentionally asks Super Productivity to show the UI confirmation for updating existing task instances.

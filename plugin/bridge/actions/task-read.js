@@ -25,9 +25,12 @@ async function taskList(payload) {
   if (typeof isArchived === "boolean") {
     tasks = tasks.filter((task) => !!task.isArchived === isArchived);
   }
-  const search = String(payload.search || "").trim().toLowerCase();
+  const search = String(payload.search || payload.query || "").trim().toLowerCase();
   if (search) {
-    tasks = tasks.filter((task) => `${task.title || ""}\n${task.notes || ""}`.toLowerCase().includes(search));
+    // searchNotes:false is set by the server when the connection may not
+    // read notes, so a search cannot reveal note contents.
+    const searchNotes = payload.searchNotes !== false;
+    tasks = tasks.filter((task) => `${task.title || ""}${searchNotes ? `\n${task.notes || ""}` : ""}`.toLowerCase().includes(search));
   }
   if (valueOf(payload, "parentsOnly", "parents_only")) {
     tasks = tasks.filter((task) => !task.parentId);
@@ -50,12 +53,15 @@ async function taskList(payload) {
   if (valueOf(payload, "includeSynthetic", "include_synthetic")) {
     tasks = await withSyntheticTaskFields(tasks);
   }
+  const matched = tasks.length;
   tasks = sortAndPageTasks(tasks, payload);
+  const offset = Math.max(0, Number(payload.offset || 0));
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
   if (fields.length > 0) {
     tasks = tasks.map((task) => pickFields(task, fields));
   }
-  return { tasks };
+  // truncated: more tasks matched than were returned after offset/limit.
+  return { tasks, truncated: offset + tasks.length < matched };
 }
 
 async function taskArchivedList(payload) {
@@ -81,9 +87,11 @@ async function taskCurrentContextList(payload) {
 }
 
 async function taskGet(payload) {
-  const task = await findTask(payload.taskId);
+  const taskId = valueOf(payload || {}, "taskId", "task_id") || payload?.id;
+  if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
+  const task = await findTask(taskId);
   if (!task) {
-    throw typedError("TASK_NOT_FOUND", `Task ${payload.taskId} not found`, false);
+    throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
   }
   return { task };
 }

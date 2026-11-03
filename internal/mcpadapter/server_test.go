@@ -69,8 +69,12 @@ func TestToolsListIsCatalogDriven(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog: %v", err)
 	}
-	if len(tools) != len(cat.MCPTools()) {
-		t.Fatalf("expected %d tools, got %d", len(cat.MCPTools()), len(tools))
+	want := 0
+	for _, tool := range cat.MCPTools() {
+		want += 1 + len(tool.Aliases)
+	}
+	if len(tools) != want {
+		t.Fatalf("expected %d tools (names plus aliases), got %d", want, len(tools))
 	}
 	var foundOutputSchema bool
 	for _, raw := range tools {

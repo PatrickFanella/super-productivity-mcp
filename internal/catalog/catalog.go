@@ -27,11 +27,44 @@ type Tool struct {
 	InputSchema  map[string]any `json:"inputSchema"`
 	OutputSchema map[string]any `json:"outputSchema,omitempty"`
 	Internal     bool           `json:"internal,omitempty"`
+	// Title is the human-readable display name advertised in tools/list.
+	Title string `json:"title,omitempty"`
+	// Scope is the access scope a caller needs to see or call the tool
+	// (one of Scopes). Empty means the tool is always available.
+	Scope string `json:"scope,omitempty"`
+	// Aliases are extra MCP names that resolve to this tool, kept for
+	// compatibility with other Super Productivity MCP servers.
+	Aliases []string `json:"aliases,omitempty"`
+	// Annotations are the MCP tool behaviour hints (readOnlyHint,
+	// destructiveHint, idempotentHint, openWorldHint).
+	Annotations map[string]bool `json:"annotations,omitempty"`
 
 	// schemas are compiled validators; populated on Load.
 	schema       *jsonschema.Schema
 	outputSchema *jsonschema.Schema
 }
+
+// Access scopes a tool can require. "notes" does not gate any tool; without
+// it, task notes are removed from results.
+const (
+	ScopeRead   = "read"
+	ScopeNotes  = "notes"
+	ScopeCreate = "create"
+	ScopeWrite  = "write"
+)
+
+// Scopes lists every access scope in canonical order.
+var Scopes = []string{ScopeRead, ScopeNotes, ScopeCreate, ScopeWrite}
+
+func isToolScope(scope string) bool {
+	return scope == "" || scope == ScopeRead || scope == ScopeCreate || scope == ScopeWrite
+}
+
+// ReadOnly reports whether the tool declares readOnlyHint.
+func (t *Tool) ReadOnly() bool { return t.Annotations["readOnlyHint"] }
+
+// Idempotent reports whether the tool declares idempotentHint.
+func (t *Tool) Idempotent() bool { return t.Annotations["idempotentHint"] }
 
 // Resource is one MCP resource entry backed by a plugin IPC action and a fixed
 // payload. Resources are read-only MCP surfaces for common stable views.
@@ -78,6 +111,9 @@ func Load() (*Catalog, error) {
 		if _, dup := c.byAction[t.Action]; dup {
 			return nil, fmt.Errorf("catalog: duplicate action %q", t.Action)
 		}
+		if !isToolScope(t.Scope) {
+			return nil, fmt.Errorf("catalog: tool %q has unknown scope %q", t.Action, t.Scope)
+		}
 		if t.MCPName != "" {
 			if _, dup := c.byMCP[t.MCPName]; dup {
 				return nil, fmt.Errorf("catalog: duplicate mcpName %q", t.MCPName)
@@ -117,6 +153,17 @@ func Load() (*Catalog, error) {
 			t.outputSchema = compiledOutput
 		}
 	}
+	for _, t := range c.Tools {
+		for _, alias := range t.Aliases {
+			if t.MCPName == "" || alias == "" {
+				return nil, fmt.Errorf("catalog: tool %q has an empty alias or no mcpName", t.Action)
+			}
+			if _, dup := c.byMCP[alias]; dup {
+				return nil, fmt.Errorf("catalog: alias %q collides with another tool name", alias)
+			}
+			c.byMCP[alias] = t
+		}
+	}
 	for _, r := range c.Resources {
 		if r.URI == "" || r.Action == "" {
 			return nil, fmt.Errorf("catalog: resource with empty uri/action")
@@ -138,7 +185,8 @@ func Load() (*Catalog, error) {
 	return &c, nil
 }
 
-// LookupMCP returns the tool registered under the given MCP tool name, or nil.
+// LookupMCP returns the tool registered under the given MCP tool name or
+// alias, or nil.
 func (c *Catalog) LookupMCP(name string) *Tool {
 	return c.byMCP[name]
 }

@@ -21,11 +21,49 @@ type Server struct {
 	logger  *slog.Logger
 	bridge  domain.Bridge
 	catalog *catalog.Catalog
+	opts    Options
+	scopes  map[string]bool
 }
 
-// New wires a server against a bridge and a loaded catalog.
+// Options configures access and response limits.
+type Options struct {
+	// Scopes is the access grant (catalog.Scopes members). Tools whose scope
+	// is not granted are hidden and refused; without "notes", task notes are
+	// removed from results.
+	Scopes []string
+	// MaxResponseBytes caps a tool or resource result's JSON size. 0 = no cap.
+	MaxResponseBytes int
+}
+
+// New wires a server against a bridge and a loaded catalog with every scope
+// granted and no response cap.
 func New(logger *slog.Logger, bridge domain.Bridge, cat *catalog.Catalog) *Server {
-	return &Server{logger: logger, bridge: bridge, catalog: cat}
+	return NewWithOptions(logger, bridge, cat, Options{Scopes: catalog.Scopes})
+}
+
+// NewWithOptions wires a server with an explicit access grant and limits.
+func NewWithOptions(logger *slog.Logger, bridge domain.Bridge, cat *catalog.Catalog, opts Options) *Server {
+	scopes := make(map[string]bool, len(opts.Scopes))
+	for _, s := range opts.Scopes {
+		scopes[s] = true
+	}
+	return &Server{logger: logger, bridge: bridge, catalog: cat, opts: opts, scopes: scopes}
+}
+
+// grantedScopes returns the grant in canonical order.
+func (s *Server) grantedScopes() []string {
+	out := []string{}
+	for _, scope := range catalog.Scopes {
+		if s.scopes[scope] {
+			out = append(out, scope)
+		}
+	}
+	return out
+}
+
+// allowed reports whether the grant covers the tool's scope.
+func (s *Server) allowed(t *catalog.Tool) bool {
+	return t.Scope == "" || s.scopes[t.Scope]
 }
 
 // Serve reads JSON-RPC messages line-by-line from in and writes replies to out.

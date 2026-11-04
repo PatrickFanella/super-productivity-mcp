@@ -1,5 +1,12 @@
 # super-productivity-mcp
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup.svg">
+  <img src="docs/brand/mark-mono-light.svg" alt="super-productivity-mcp logo. A bridge: two short vertical posts joined by an arc, with a dot at the arc's apex." height="80">
+</picture>
+
+A [SUBCULT](https://subcult.tv) project.
+
 **A local-first productivity integration that lets AI clients work safely with Super Productivity.** It combines a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server, desktop quick-add launcher, in-app plugin bridge, and agent skill bundle into one versioned suite.
 
 | Challenge | Outcome |

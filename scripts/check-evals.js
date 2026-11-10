@@ -21,7 +21,17 @@ const pairs = [...xml.matchAll(/<qa_pair>\s*<question>([\s\S]*?)<\/question>\s*<
 if (!xml.trim().startsWith("<evaluation>") || !xml.trim().endsWith("</evaluation>")) {
   fail("expected <evaluation> root element");
 }
-if (pairs.length < 10) fail(`expected at least 10 qa_pair entries, got ${pairs.length}`);
+// Every qa_pair must parse whole: once the well-formed pairs are removed,
+// nothing but whitespace may remain inside <evaluation>. This catches a
+// merge that leaves a half pair or a second root.
+const body = xml.trim().slice("<evaluation>".length, -"</evaluation>".length);
+const leftover = body.replace(/<qa_pair>\s*<question>[\s\S]*?<\/question>\s*<answer>[\s\S]*?<\/answer>\s*<\/qa_pair>/g, "").trim();
+if (leftover) fail(`malformed evaluation XML near: ${leftover.slice(0, 80)}`);
+const opened = (xml.match(/<qa_pair>/g) || []).length;
+if (opened !== pairs.length) fail(`${opened} <qa_pair> tags but ${pairs.length} complete pairs`);
+// Raise this floor when scenarios are added, so a merge that drops one fails.
+const MIN_SCENARIOS = 21;
+if (pairs.length < MIN_SCENARIOS) fail(`expected at least ${MIN_SCENARIOS} qa_pair entries, got ${pairs.length}`);
 
 const seenQuestions = new Set();
 for (const [index, pair] of pairs.entries()) {

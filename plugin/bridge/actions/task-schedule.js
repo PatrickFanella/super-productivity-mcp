@@ -1,27 +1,32 @@
 const { typedError } = require("../errors");
 const { dayRangeMs, findTask, getDayContext, getTasksBySource, isLocalDateString, localDateStr, valueOf } = require("./task-common");
 const { compactTaskSummary, hasSuspiciousDatesOrEstimates, scheduleDayIn, taskSchedule } = require("./task-shape");
-const { taskBulkUpdateCore } = require("./task-mutate");
+const { applyPatches } = require("./task-mutate");
+const { scheduleWrite } = require("./task-schedule-write");
 
+// taskClearScheduleForDay removes the time from tasks timed on date (a
+// calendar day), dismissing their reminders, and with clearDueDay also clears
+// a dueDay equal to date.
 async function taskClearScheduleForDay(payload) {
   payload = payload || {};
   const date = payload.date;
-  if (!isLocalDateString(date)) throw typedError("INVALID_REQUEST", "date must be YYYY-MM-DD", false);
+  if (!isLocalDateString(date)) throw typedError("INVALID_REQUEST", "date must be a valid YYYY-MM-DD date", false);
   const includeDone = valueOf(payload, "includeDone", "include_done") === true;
   const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
   const clearDueDay = valueOf(payload, "clearDueDay", "clear_due_day") === true;
-  const [start, end] = dayRangeMs(date);
+  const dryRun = valueOf(payload, "dryRun", "dry_run") === true;
   const tasks = await getTasksBySource(includeArchived ? "all" : "active");
-  const updates = [];
+  const entries = [];
   for (const task of tasks) {
     if (!includeDone && task.isDone) continue;
     if (!includeArchived && task.isArchived) continue;
-    const patch = {};
-    if (task.plannedAt != null && task.plannedAt >= start && task.plannedAt < end) patch.plannedAt = null;
+    const schedule = taskSchedule(task);
+    let patch = {};
+    if (schedule.kind === "timed" && schedule.day === date) patch = scheduleWrite({ dueWithTime: null }, task);
     if (clearDueDay && task.dueDay === date) patch.dueDay = null;
-    if (Object.keys(patch).length > 0) updates.push({ taskId: task.id, ...patch });
+    if (Object.keys(patch).length > 0) entries.push({ taskId: task.id, patch });
   }
-  const out = await taskBulkUpdateCore({ ...payload, updates }, ["plannedAt", "dueDay"]);
+  const out = await applyPatches(entries, new Map(tasks.map((task) => [task.id, task])), dryRun);
   return { ...out, date, changedCount: out.results.filter((result) => result.success).length };
 }
 
@@ -155,39 +160,108 @@ async function taskMakePlannedAt(payload) {
   return out;
 }
 
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function weekdayOf(dateStr) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return WEEKDAY_KEYS[new Date(year, month - 1, day).getDay()];
+}
+
+// taskAutoSchedule places unscheduled leaf tasks into free capacity on the
+// given calendar days, as timed work starting at workStart in timezone. Work
+// already scheduled on a day counts against its capacity, and new work never
+// overlaps a timed task. A parent whose subtasks are candidates is skipped,
+// so parent and subtask estimates are not counted twice. Every day is a
+// working day unless workingDays names others. Dry run by default.
 async function taskAutoSchedule(payload) {
   payload = payload || {};
   const startDate = payload.startDate || payload.start_date;
   const endDate = payload.endDate || payload.end_date || startDate;
-  if (!isLocalDateString(startDate)) throw typedError("INVALID_REQUEST", "startDate must be YYYY-MM-DD", false);
-  if (!isLocalDateString(endDate)) throw typedError("INVALID_REQUEST", "endDate must be YYYY-MM-DD", false);
-  const timezone = payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  if (!isLocalDateString(startDate)) throw typedError("INVALID_REQUEST", "startDate must be a valid YYYY-MM-DD date", false);
+  if (!isLocalDateString(endDate)) throw typedError("INVALID_REQUEST", "endDate must be a valid YYYY-MM-DD date", false);
+  if (endDate < startDate) throw typedError("INVALID_REQUEST", "endDate must not be before startDate", false);
+  const timezone = payload.timezone && payload.timezone !== "local" ? payload.timezone : hostTimeZone();
   const capacityMs = Math.max(1, Number(valueOf(payload, "capacityPerDayMinutes", "capacity_per_day_minutes") || 240)) * 60000;
   const defaultEstimateMs = Math.max(1, Number(valueOf(payload, "defaultEstimateMinutes", "default_estimate_minutes") || 30)) * 60000;
   const workStart = payload.workStart || payload.work_start || payload.workHours?.[0]?.start || "09:00";
+  if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(workStart)) throw typedError("INVALID_REQUEST", "workStart must be HH:MM", false);
+  const workingDays = valueOf(payload, "workingDays", "working_days") || WEEKDAY_KEYS.slice(1).concat("sun");
+  if (!Array.isArray(workingDays) || workingDays.some((day) => !WEEKDAY_KEYS.includes(day))) {
+    throw typedError("INVALID_REQUEST", `workingDays must list days out of ${WEEKDAY_KEYS.join(", ")}`, false);
+  }
   const dryRun = valueOf(payload, "dryRun", "dry_run") !== false || valueOf(payload, "confirmApply", "confirm_apply") !== true;
-  const candidates = (await getTasksBySource("active"))
-    .filter((task) => !task.isDone && !task.isArchived && task.plannedAt == null)
-    .filter((task) => !payload.rules?.topLevelOnly || !task.parentId)
+
+  const tasks = (await getTasksBySource("active")).filter((task) => !task.isDone && !task.isArchived);
+  const parentIds = new Set(tasks.filter((task) => task.parentId).map((task) => task.parentId));
+  const isLeaf = (task) => !parentIds.has(task.id) && !(Array.isArray(task.subTaskIds) && task.subTaskIds.length > 0);
+  const estimateOf = (task) => (Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs);
+
+  const days = localDateRange(startDate, endDate)
+    .filter((date) => workingDays.includes(weekdayOf(date)))
+    .map((date) => ({ date, existingMs: 0, plannedMs: 0, busy: [], nextMs: resolveZonedWallTime(date, workStart, timezone, "earlier").ms }));
+  const dayByDate = new Map(days.map((day) => [day.date, day]));
+  // Existing allocations: scheduled leaf tasks on each day.
+  for (const task of tasks) {
+    const schedule = taskSchedule(task);
+    const day = schedule.day && dayByDate.get(schedule.day);
+    if (!day || !isLeaf(task)) continue;
+    day.existingMs += estimateOf(task);
+    if (schedule.kind === "timed") day.busy.push([schedule.at, schedule.at + estimateOf(task)]);
+  }
+
+  const topLevelOnly = !!payload.rules?.topLevelOnly;
+  const candidates = tasks
+    .filter((task) => taskSchedule(task).kind === "none")
+    .filter((task) => !topLevelOnly || !task.parentId)
     .filter((task) => !payload.includeProjectIds?.length || payload.includeProjectIds.includes(task.projectId))
     .filter((task) => !payload.excludeProjectIds?.length || !payload.excludeProjectIds.includes(task.projectId))
-    .sort((a, b) => String(a.dueDay || "9999-99-99").localeCompare(String(b.dueDay || "9999-99-99")) || String(a.title || "").localeCompare(String(b.title || "")));
-  const days = localDateRange(startDate, endDate).map((date) => ({ date, usedMs: 0, nextMs: zonedWallTimeToMs(date, workStart, timezone) }));
+    .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+  const candidateIds = new Set(candidates.map((task) => task.id));
   const updates = [];
   const skipped = [];
   for (const task of candidates) {
-    const estimateMs = Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs;
-    const day = days.find((candidate) => candidate.usedMs + estimateMs <= capacityMs);
+    if (!topLevelOnly && tasks.some((child) => child.parentId === task.id && candidateIds.has(child.id))) {
+      skipped.push({ ...compactTaskSummary(task), reason: "subtasks_scheduled_instead" });
+      continue;
+    }
+    const estimateMs = estimateOf(task);
+    const day = days.find((candidate) => candidate.existingMs + candidate.plannedMs + estimateMs <= capacityMs);
     if (!day) {
       skipped.push({ ...compactTaskSummary(task), reason: "capacity_exhausted" });
       continue;
     }
-    updates.push({ taskId: task.id, plannedAt: day.nextMs });
-    day.usedMs += estimateMs;
-    day.nextMs += estimateMs;
+    let start = day.nextMs;
+    for (let moved = true; moved; ) {
+      moved = false;
+      for (const [busyStart, busyEnd] of day.busy) {
+        if (start < busyEnd && start + estimateMs > busyStart) {
+          start = busyEnd;
+          moved = true;
+        }
+      }
+    }
+    day.busy.push([start, start + estimateMs]);
+    day.nextMs = start + estimateMs;
+    day.plannedMs += estimateMs;
+    const patch = scheduleWrite({ dueWithTime: start }, task);
+    updates.push({ taskId: task.id, dueWithTime: start, plannedAt: start, date: day.date, changes: Object.entries(patch).map(([field, after]) => ({ field, before: task[field] ?? null, after })) });
   }
-  const result = { dryRun, startDate, endDate, timezone, updates, scheduledCount: updates.length, skipped };
-  if (!dryRun) result.results = (await taskBulkUpdateCore({ updates, dryRun: false }, ["plannedAt"])).results;
+  const result = {
+    dryRun,
+    startDate,
+    endDate,
+    timezone,
+    workingDays,
+    capacity: days.map((day) => ({ date: day.date, existingMs: day.existingMs, plannedMs: day.plannedMs, capacityMs })),
+    updates,
+    scheduledCount: updates.length,
+    skipped,
+  };
+  if (!dryRun) {
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    const entries = updates.map((update) => ({ taskId: update.taskId, patch: scheduleWrite({ dueWithTime: update.dueWithTime }, byId.get(update.taskId)) }));
+    result.results = (await applyPatches(entries, byId, false)).results;
+  }
   return result;
 }
 
@@ -296,6 +370,8 @@ function zonedDateParts(date, timezone) {
 }
 
 module.exports = {
+  hostTimeZone,
+  resolveZonedWallTime,
   taskAutoSchedule,
   taskClearScheduleForDay,
   taskCompactNotes,

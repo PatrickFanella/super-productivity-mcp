@@ -146,9 +146,10 @@ test("task.bulkComplete completes existing tasks with partial results", async ()
   assert.equal(typeof updates[0].data.doneOn, "number");
 });
 
-test("task.bulkUpdate maps snake case fields and reports partial failure", async () => {
+test("task.bulkUpdate maps snake case fields to canonical schedules and reports partial failure", async () => {
   const updates = [];
   global.PluginAPI = {
+    getTasks: async () => [{ id: "a", title: "A" }, { id: "bad", title: "Bad" }],
     updateTask: async (taskId, data) => {
       if (taskId === "bad") throw new Error("nope");
       updates.push({ taskId, data });
@@ -162,14 +163,15 @@ test("task.bulkUpdate maps snake case fields and reports partial failure", async
     ],
   });
 
-  assert.deepEqual(updates, [{ taskId: "a", data: { dueDay: "2026-05-14", plannedAt: null, timeEstimate: 60000, tagIds: ["t1"] } }]);
+  // planned_at:null clears the time and its reminder; dueDay makes it day-only.
+  assert.deepEqual(updates, [{ taskId: "a", data: { timeEstimate: 60000, tagIds: ["t1"], dueWithTime: null, remindAt: null, dueDay: "2026-05-14" } }]);
   assert.deepEqual(out.results.map((r) => ({ id: r.id, success: r.success })), [
     { id: "a", success: true },
     { id: "bad", success: false },
   ]);
 });
 
-test("task.bulkUpdate dry-run reports diffs without mutating", async () => {
+test("task.bulkUpdate dry-run reports canonical diffs without mutating", async () => {
   let mutated = false;
   global.PluginAPI = {
     getTasks: async () => [{ id: "a", title: "A", plannedAt: 1000, dueDay: "2026-05-13" }],
@@ -185,14 +187,35 @@ test("task.bulkUpdate dry-run reports diffs without mutating", async () => {
 
   assert.equal(out.dryRun, true);
   assert.equal(mutated, false);
+  // The legacy plannedAt alias becomes dueWithTime and the stale field is cleared.
   assert.deepEqual(out.results[0].changes, [
+    { field: "dueWithTime", before: undefined, after: 2000 },
     { field: "dueDay", before: "2026-05-13", after: null },
-    { field: "plannedAt", before: 1000, after: 2000 },
+    { field: "plannedAt", before: 1000, after: null },
   ]);
 
   const missing = await taskActions["task.bulkUpdate"]({ dryRun: true, updates: [{ taskId: "missing", plannedAt: 3000 }] });
   assert.equal(missing.results[0].success, false);
   assert.match(missing.results[0].error, /not found/);
+});
+
+test("task.bulkUpdate refuses conflicting schedule inputs per task without writing", async () => {
+  const updates = [];
+  const day = new Date(2026, 4, 14, 9).getTime();
+  global.PluginAPI = {
+    getTasks: async () => [{ id: "a", title: "A" }, { id: "timed", title: "T", dueWithTime: day }],
+    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+  };
+  const out = await taskActions["task.bulkUpdate"]({
+    updates: [
+      { taskId: "a", dueWithTime: day, plannedAt: day + 1 },
+      { taskId: "a", dueWithTime: day, dueDay: "2026-05-15" },
+      { taskId: "timed", dueDay: "2026-05-15" },
+      { taskId: "a", dueDay: "2026-02-30" },
+    ],
+  });
+  assert.deepEqual(out.results.map((r) => r.success), [false, false, false, false]);
+  assert.deepEqual(updates, []);
 });
 
 test("task.bulkReschedule only updates schedule fields", async () => {
@@ -209,7 +232,7 @@ test("task.bulkReschedule only updates schedule fields", async () => {
     ],
   });
 
-  assert.deepEqual(updates, [{ taskId: "a", data: { plannedAt: 123, timeEstimate: 60000 } }]);
+  assert.deepEqual(updates, [{ taskId: "a", data: { timeEstimate: 60000, dueWithTime: 123, dueDay: null } }]);
   assert.equal(out.results[0].success, true);
   assert.deepEqual(out.results[0].ignoredFields, ["title"]);
   assert.equal(out.results[1].success, false);
@@ -293,26 +316,30 @@ test("task.deleteRecurrence dispatches shared delete action for task repeatCfgId
   });
 });
 
-test("task.clearScheduleForDay supports dry-run and updates", async () => {
-  const plannedAt = new Date(2026, 4, 14, 9).getTime();
+test("task.clearScheduleForDay supports dry-run and clears times with their reminders", async () => {
+  const at = new Date(2026, 4, 14, 9).getTime();
   const updates = [];
   global.PluginAPI = {
     getTasks: async () => [
-      { id: "planned", title: "Planned", plannedAt, dueDay: "2026-05-14", isDone: false },
-      { id: "done", title: "Done", plannedAt, dueDay: "2026-05-14", isDone: true },
-      { id: "other-day", title: "Other", plannedAt: new Date(2026, 4, 15).getTime(), isDone: false },
+      { id: "planned", title: "Planned", plannedAt: at, dueDay: "2026-05-14", isDone: false },
+      { id: "timed", title: "Timed", dueWithTime: at + 3600000, remindAt: at, isDone: false },
+      { id: "done", title: "Done", dueWithTime: at, isDone: true },
+      { id: "other-day", title: "Other", dueWithTime: new Date(2026, 4, 15, 9).getTime(), isDone: false },
     ],
     updateTask: async (taskId, data) => updates.push({ taskId, data }),
   };
 
   const dry = await taskActions["task.clearScheduleForDay"]({ date: "2026-05-14", clear_due_day: true, dry_run: true });
   assert.equal(dry.dryRun, true);
-  assert.equal(dry.changedCount, 1);
+  assert.equal(dry.changedCount, 2);
   assert.deepEqual(updates, []);
 
   const changed = await taskActions["task.clearScheduleForDay"]({ date: "2026-05-14", clearDueDay: true });
-  assert.equal(changed.changedCount, 1);
-  assert.deepEqual(updates, [{ taskId: "planned", data: { plannedAt: null, dueDay: null } }]);
+  assert.equal(changed.changedCount, 2);
+  assert.deepEqual(updates, [
+    { taskId: "planned", data: { dueWithTime: null, remindAt: null, plannedAt: null, dueDay: null } },
+    { taskId: "timed", data: { dueWithTime: null, remindAt: null } },
+  ]);
 });
 
 test("task.scheduleHealth returns cleanup counts and concise lists", async () => {
@@ -344,22 +371,36 @@ test("task.scheduleHealth returns cleanup counts and concise lists", async () =>
   assert.deepEqual(out.tasks.plannedToday[0].id, "planned");
 });
 
-test("task.planToday plans and unplans tasks via plannedAt", async () => {
+test("task.planToday files tasks under the logical Today without inventing a time", async () => {
   const updates = [];
+  const today = new Date();
+  const todayAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 15).getTime();
   global.PluginAPI = {
+    getDayContext: async () => ({ todayStr: "2026-05-14", startOfNextDayDiffMs: 0 }),
+    getTasks: async () => [
+      { id: "a", title: "A" },
+      { id: "b", title: "B", dueWithTime: new Date(2026, 4, 12, 9).getTime(), remindAt: 1 },
+      { id: "c", title: "C", dueWithTime: new Date(2026, 4, 14, 9).getTime() },
+    ],
     updateTask: async (taskId, data) => updates.push({ taskId, data }),
   };
 
-  const planned = await taskActions["task.planToday"]({ taskIds: ["a", "b"] });
+  const planned = await taskActions["task.planToday"]({ taskIds: ["a", "b", "c"] });
   assert.deepEqual(planned.results.map((r) => ({ id: r.id, success: r.success })), [
     { id: "a", success: true },
     { id: "b", success: true },
+    { id: "c", success: true },
   ]);
-  assert.equal(typeof updates[0].data.plannedAt, "number");
+  assert.deepEqual(updates, [
+    { taskId: "a", data: { dueDay: "2026-05-14", dueWithTime: null, remindAt: null } },
+    { taskId: "b", data: { dueDay: "2026-05-14", dueWithTime: null, remindAt: null } },
+  ]);
+  assert.equal(planned.results[2].note, "already scheduled with a time today");
+  assert.equal(todayAt > 0, true);
 
   updates.length = 0;
-  await taskActions["task.planToday"]({ task_ids: ["a"], unplan: true });
-  assert.deepEqual(updates, [{ taskId: "a", data: { plannedAt: null } }]);
+  await taskActions["task.planToday"]({ task_ids: ["b"], unplan: true });
+  assert.deepEqual(updates, [{ taskId: "b", data: { dueDay: null, dueWithTime: null, remindAt: null } }]);
 });
 
 test("task.addTag adds tag without replacing existing tags", async () => {
@@ -749,7 +790,7 @@ test("task.makePlannedAt converts local date and time", async () => {
   assert.match(out.iso, /^2026-/);
 });
 
-test("task.autoSchedule dry-runs by default and applies with confirmation", async () => {
+test("task.autoSchedule dry-runs by default and applies canonical times with confirmation", async () => {
   const updates = [];
   global.PluginAPI = {
     getTasks: async () => [
@@ -763,14 +804,38 @@ test("task.autoSchedule dry-runs by default and applies with confirmation", asyn
   const dry = await taskActions["task.autoSchedule"]({ start_date: "2026-05-14", end_date: "2026-05-14", capacity_per_day_minutes: 60, timezone: "local" });
   assert.equal(dry.dryRun, true);
   assert.deepEqual(dry.updates.map((update) => update.taskId), ["a"]);
+  assert.equal(dry.updates[0].dueWithTime, new Date(2026, 4, 14, 9).getTime());
   assert.deepEqual(dry.skipped.map((task) => task.id), ["b"]);
   assert.deepEqual(updates, []);
 
   const applied = await taskActions["task.autoSchedule"]({ startDate: "2026-05-14", capacityPerDayMinutes: 60, timezone: "local", dryRun: false, confirmApply: true });
   assert.equal(applied.dryRun, false);
   assert.equal(applied.results[0].success, true);
-  assert.equal(updates[0].taskId, "a");
-  assert.equal(typeof updates[0].data.plannedAt, "number");
+  assert.deepEqual(updates, [{ taskId: "a", data: { dueWithTime: new Date(2026, 4, 14, 9).getTime(), dueDay: null } }]);
+});
+
+test("task.autoSchedule counts existing work, avoids timed slots and does not double-count parents", async () => {
+  const at = (h, m = 0) => new Date(2026, 4, 14, h, m).getTime();
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "busy", title: "Busy", dueWithTime: at(9), timeEstimate: 60 * 60000 },
+      { id: "day", title: "Day work", dueDay: "2026-05-14", timeEstimate: 30 * 60000 },
+      { id: "parent", title: "Parent", timeEstimate: 90 * 60000, subTaskIds: ["c1", "c2"] },
+      { id: "c1", title: "Child 1", parentId: "parent", timeEstimate: 45 * 60000 },
+      { id: "c2", title: "Child 2", parentId: "parent", timeEstimate: 45 * 60000 },
+    ],
+  };
+  const out = await taskActions["task.autoSchedule"]({ startDate: "2026-05-14", endDate: "2026-05-15", capacityPerDayMinutes: 150, timezone: "local" });
+  assert.deepEqual(out.capacity[0], { date: "2026-05-14", existingMs: 90 * 60000, plannedMs: 45 * 60000, capacityMs: 150 * 60000 });
+  assert.deepEqual(out.updates.map((u) => [u.taskId, u.date, u.dueWithTime]), [
+    // 09:00-10:00 is taken, so the first child starts at 10:00.
+    ["c1", "2026-05-14", at(10)],
+    ["c2", "2026-05-15", new Date(2026, 4, 15, 9).getTime()],
+  ]);
+  assert.deepEqual(out.skipped.map((t) => [t.id, t.reason]), [["parent", "subtasks_scheduled_instead"]]);
+
+  const weekdays = await taskActions["task.autoSchedule"]({ startDate: "2026-05-16", endDate: "2026-05-18", workingDays: ["mon"], timezone: "local" });
+  assert.deepEqual(weekdays.capacity.map((d) => d.date), ["2026-05-18"]);
 });
 
 test("task.compactNotes dry-runs by default and applies replacement notes with confirmation", async () => {
@@ -805,16 +870,26 @@ test("task.compactNotes validates task and replacement notes", async () => {
   await assert.rejects(taskActions["task.compactNotes"]({ taskId: "missing" }), (err) => err.code === "INVALID_REQUEST");
 });
 
-test("task.update forwards dueDay and plannedAt", async () => {
+test("task.update writes canonical schedule fields and keeps titles literal", async () => {
   let received;
+  let options;
+  const at = new Date(2026, 4, 13, 9).getTime();
   global.PluginAPI = {
-    updateTask: async (_id, updates) => {
+    getTasks: async () => [{ id: "1", title: "One" }],
+    updateTask: async (_id, updates, opts) => {
       received = updates;
+      options = opts;
     },
   };
 
-  await taskActions["task.update"]({ taskId: "1", dueDay: "2026-05-13", plannedAt: 1778630400000 });
-  assert.deepEqual(received, { dueDay: "2026-05-13", plannedAt: 1778630400000 });
+  await taskActions["task.update"]({ taskId: "1", dueDay: "2026-05-13", plannedAt: at });
+  assert.deepEqual(received, { dueWithTime: at, dueDay: null });
+  assert.deepEqual(options, { isIgnoreShortSyntax: true });
+
+  await taskActions["task.update"]({ taskId: "1", title: "Fix #12 +wor" });
+  assert.deepEqual(received, { title: "Fix #12 +wor" });
+  await assert.rejects(taskActions["task.update"]({ taskId: "1", dueDay: "2026-05-14", dueWithTime: at }), { code: "INVALID_REQUEST" });
+  await assert.rejects(taskActions["task.update"]({ taskId: "missing", dueDay: "2026-05-14" }), { code: "TASK_NOT_FOUND" });
 });
 
 test("task.get throws typed TASK_NOT_FOUND", async () => {

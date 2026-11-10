@@ -97,8 +97,9 @@ function createPluginApi(overrides = {}) {
       record("getDayContext");
       return clone(fixture.dayContext);
     },
-    updateTask: async (taskId, updates) => {
-      record("updateTask", taskId, updates);
+    updateTask: async (taskId, updates, options) => {
+      if (options === undefined) record("updateTask", taskId, updates);
+      else record("updateTask", taskId, updates, options);
       const task = state.active.get(taskId);
       if (!task) throw new Error(`Task ${taskId} not found`);
       Object.assign(task, updates);

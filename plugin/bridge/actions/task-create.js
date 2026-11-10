@@ -1,7 +1,8 @@
 const { typedError } = require("../errors");
-const { parseTaskShortSyntax } = require("./task-short-syntax");
+const { parseDueAndEstimate, parseTaskShortSyntax } = require("./task-short-syntax");
 const { localDateStr, mergeUnique, valueOf } = require("./task-common");
 const { buildRepeatRecurrence, taskSetRecurrence } = require("./task-recurrence");
+const { hostTimeZone, resolveZonedWallTime } = require("./task-schedule");
 
 const DUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DUE_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -29,37 +30,68 @@ function explicitDue(payload) {
   if (typeof dueTime !== "string" || !DUE_TIME_RE.test(dueTime)) {
     throw typedError("INVALID_REQUEST", "dueTime must be a 24-hour time as HH:MM", false);
   }
-  const [year, month, date] = dueDate.split("-").map(Number);
-  const [hour, minute] = dueTime.split(":").map(Number);
-  return { dueDay: dueDate, dueWithTime: new Date(year, month - 1, date, hour, minute).getTime() };
+  // A time the clocks skip or repeat is refused rather than guessed.
+  const resolved = resolveZonedWallTime(dueDate, dueTime, hostTimeZone());
+  return { dueDay: dueDate, dueWithTime: resolved.ms };
 }
 
+// buildTaskData parses the title once, here, and returns the addTask data
+// plus a time to set afterwards (PluginAPI.addTask has no dueWithTime).
+// isIgnoreShortSyntax stops the app from parsing the result a second time.
+// A subtask takes its parent's project and has no tags, as in the app, so
+// only due dates and estimates are read from its title.
 async function buildTaskData(payload) {
   const literal = payload.literal === true;
-  const parsed = literal ? { title: payload.title || "", tagIds: [] } : await parseTaskShortSyntax(payload.title || "");
+  const parentId = valueOf(payload, "parentId", "parent_id");
+  const title = payload.title || "";
+  let parsed;
+  if (literal) parsed = { title, tagIds: [] };
+  else if (parentId) parsed = { ...parseDueAndEstimate(title), tagIds: [] };
+  else parsed = await parseTaskShortSyntax(title);
   const data = {
     title: parsed.title,
     notes: payload.notes || "",
-    projectId: valueOf(payload, "projectId", "project_id") || parsed.projectId,
-    parentId: valueOf(payload, "parentId", "parent_id"),
     timeEstimate: valueOf(payload, "timeEstimate", "time_estimate") ?? parsed.timeEstimate ?? 0,
-    tagIds: mergeUnique(valueOf(payload, "tagIds", "tag_ids") || [], parsed.tagIds),
+    isIgnoreShortSyntax: true,
   };
+  if (parentId) {
+    data.parentId = parentId;
+  } else {
+    data.projectId = valueOf(payload, "projectId", "project_id") || parsed.projectId;
+    data.tagIds = mergeUnique(valueOf(payload, "tagIds", "tag_ids") || [], parsed.tagIds);
+  }
   if (parsed.timeSpent != null) data.timeSpent = parsed.timeSpent;
+  let dueWithTime = parsed.dueWithTime;
   if (parsed.dueDay != null) data.dueDay = parsed.dueDay;
-  if (parsed.dueWithTime != null) data.dueWithTime = parsed.dueWithTime;
   // Explicit fields win over anything parsed from the title.
   const due = explicitDue(payload);
   if (due.dueDay != null) {
     data.dueDay = due.dueDay;
-    delete data.dueWithTime;
+    dueWithTime = due.dueWithTime;
   }
-  if (due.dueWithTime != null) data.dueWithTime = due.dueWithTime;
-  return data;
+  // A timed task is filed by its time: v20 keeps dueDay empty for it.
+  if (dueWithTime != null) delete data.dueDay;
+  return { data, dueWithTime: dueWithTime ?? null };
+}
+
+// createTask adds the task, then sets its time. If the time cannot be set,
+// the created task id is still returned with scheduleError, so a caller does
+// not retry and create a duplicate.
+async function createTask(built) {
+  const taskId = await PluginAPI.addTask(built.data);
+  const out = { taskId };
+  if (built.dueWithTime != null) {
+    try {
+      await PluginAPI.updateTask(taskId, { dueWithTime: built.dueWithTime, dueDay: null });
+    } catch (error) {
+      out.scheduleError = { code: error?.code || "SCHEDULE_FAILED", message: error?.message || String(error) };
+    }
+  }
+  return out;
 }
 
 async function taskCreate(payload) {
-  const data = await buildTaskData(payload);
+  const built = await buildTaskData(payload);
   // Validate recurrence before the task exists, so a bad repeat argument
   // never leaves a half-made task behind.
   const recurrence = payload.repeat
@@ -68,16 +100,17 @@ async function taskCreate(payload) {
         startTime: valueOf(payload, "dueTime", "due_time"),
       })
     : null;
-  const taskId = await PluginAPI.addTask(data);
-  if (!recurrence) return { taskId };
+  const created = await createTask(built);
+  const { taskId } = created;
+  if (!recurrence) return created;
   // The task exists now. Report a recurrence failure next to the id instead
   // of throwing, so the caller does not retry and create a duplicate.
   try {
     const result = await taskSetRecurrence({ taskId, recurrence });
-    return { taskId, repeatCfgId: result.repeatCfgId };
+    return { ...created, repeatCfgId: result.repeatCfgId };
   } catch (error) {
     return {
-      taskId,
+      ...created,
       recurrenceError: { code: error?.code || "RECURRENCE_FAILED", message: error?.message || String(error) },
     };
   }
@@ -87,15 +120,19 @@ async function taskCreateWithSubtasks(payload) {
   if (!Array.isArray(payload?.subtasks)) {
     throw typedError("INVALID_REQUEST", "subtasks must be an array", false);
   }
-  const parentData = await buildTaskData(payload);
-  const parentId = await PluginAPI.addTask(parentData);
+  const parent = await createTask(await buildTaskData(payload));
+  const parentId = parent.taskId;
   const subtaskIds = [];
+  const scheduleErrors = [];
   for (const subtask of payload.subtasks) {
-    const childData = await buildTaskData({ ...subtask, parentId });
-    const childId = await PluginAPI.addTask(childData);
-    subtaskIds.push(childId);
+    const child = await createTask(await buildTaskData({ ...subtask, parentId }));
+    subtaskIds.push(child.taskId);
+    if (child.scheduleError) scheduleErrors.push({ taskId: child.taskId, ...child.scheduleError });
   }
-  return { parentId, subtaskIds };
+  const out = { parentId, subtaskIds };
+  if (parent.scheduleError) scheduleErrors.unshift({ taskId: parentId, ...parent.scheduleError });
+  if (scheduleErrors.length) out.scheduleErrors = scheduleErrors;
+  return out;
 }
 
 module.exports = {

@@ -47,8 +47,9 @@ explicit request.
 - Prefer 15–30 minute checklist items and 45–90 minute bounded work; split work
   larger than two hours unless it is intentionally one focus block.
 - Use the MCP's timezone-aware date conversion tool, such as
-  `make_planned_at`, with an explicit named timezone. Never hand-calculate
-  `plannedAt`.
+  `make_planned_at`, with an explicit named timezone. Never hand-calculate a
+  timestamp. Write it as `dueWithTime` (`plannedAt` is an older alias); use
+  `dueDay` alone for day-only work, and `dueWithTime: null` to drop a time.
 - Extend the horizon rather than overfilling days when complete scheduling is
   requested.
 

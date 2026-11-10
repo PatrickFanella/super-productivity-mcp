@@ -17,7 +17,7 @@
     {
       "mcpName": "create_task",
       "action": "task.create",
-      "description": "Create a new task in Super Productivity. Supports short syntax in title: #tag, +project, @due, estimates like 30m or 1h/2h; pass literal:true to keep the title exactly as written. Pass dueDate (and optionally dueTime) to schedule the task, and repeat to make it recurring. Retrying after a timeout can create a duplicate.",
+      "description": "Create a new task in Super Productivity. Supports short syntax in title: #tag, +project, @due, estimates like 30m or 1h/2h; pass literal:true to keep the title exactly as written. Pass dueDate (and optionally dueTime, local HH:MM; a skipped or repeated DST time is refused) to schedule the task, and repeat to make it recurring. A time is set right after the task is added; if that fails the result keeps taskId and adds scheduleError. The parsed title is stored as is, never parsed again. Retrying after a timeout can create a duplicate.",
       "title": "Create task",
       "scope": "create",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
@@ -105,7 +105,7 @@
     {
       "mcpName": "create_task_with_subtasks",
       "action": "task.createWithSubtasks",
-      "description": "Create a parent task and subtasks in one operation. Supports short syntax in parent and subtask titles.",
+      "description": "Create a parent task and subtasks in one operation. The parent title supports short syntax; subtask titles only @dates and estimates, because a subtask takes its parent's project and has no tags of its own, as in the app.",
       "title": "Create task with subtasks",
       "scope": "create",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
@@ -208,7 +208,7 @@
     {
       "mcpName": "update_task",
       "action": "task.update",
-      "description": "Update an existing task",
+      "description": "Update an existing task. Schedule fields are written as stock v20 stores them: dueWithTime for timed work (dueDay cleared, an existing reminder moved with the time), dueDay for day-only work, null to clear (clearing a time dismisses its reminder). plannedAt is a compatibility alias of dueWithTime; passing both with different values, a dueDay that is not the day of dueWithTime, or a dueDay alone for a task that has a time is refused before writing. Titles are stored literally.",
       "title": "Update task",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
@@ -221,7 +221,8 @@
           "projectId": { "type": "string" },
           "tagIds": { "type": "array", "items": { "type": "string" } },
           "dueDay": { "type": ["string", "null"] },
-          "plannedAt": { "type": ["integer", "null"] }
+          "plannedAt": { "type": ["integer", "null"] },
+          "dueWithTime": { "type": ["integer", "null"] }
         }
       }
     },
@@ -709,7 +710,7 @@
     {
       "mcpName": "bulk_update_tasks",
       "action": "task.bulkUpdate",
-      "description": "Update multiple tasks with per-task partial success results. Use dryRun:true to preview field diffs without mutation before broad edits.",
+      "description": "Update multiple tasks with per-task partial success results. Schedule fields follow update_task's rules (dueWithTime, dueDay, plannedAt alias), and diffs show the canonical fields that would be written. Use dryRun:true to preview field diffs without mutation before broad edits.",
       "title": "Update tasks in bulk",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
@@ -731,6 +732,8 @@
                 "due_day": { "type": ["string", "null"] },
                 "plannedAt": { "type": ["integer", "null"] },
                 "planned_at": { "type": ["integer", "null"] },
+                "dueWithTime": { "type": ["integer", "null"] },
+                "due_with_time": { "type": ["integer", "null"] },
                 "timeEstimate": { "type": "integer", "minimum": 0 },
                 "time_estimate": { "type": "integer", "minimum": 0 },
                 "timeSpent": { "type": "integer", "minimum": 0 },
@@ -758,7 +761,7 @@
     {
       "mcpName": "bulk_reschedule_tasks",
       "action": "task.bulkReschedule",
-      "description": "Update only schedule fields (plannedAt, dueDay, timeEstimate) for multiple tasks. Prefer dryRun:true first for schedule-wide changes.",
+      "description": "Update only schedule fields (dueWithTime, its alias plannedAt, dueDay, timeEstimate) for multiple tasks, following update_task's rules. Prefer dryRun:true first for schedule-wide changes; diffs show canonical fields.",
       "title": "Reschedule tasks in bulk",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
@@ -776,6 +779,8 @@
                 "due_day": { "type": ["string", "null"] },
                 "plannedAt": { "type": ["integer", "null"] },
                 "planned_at": { "type": ["integer", "null"] },
+                "dueWithTime": { "type": ["integer", "null"] },
+                "due_with_time": { "type": ["integer", "null"] },
                 "timeEstimate": { "type": "integer", "minimum": 0 },
                 "time_estimate": { "type": "integer", "minimum": 0 }
               }
@@ -789,7 +794,7 @@
     {
       "mcpName": "clear_schedule_for_day",
       "action": "task.clearScheduleForDay",
-      "description": "Clear plannedAt for tasks planned on a local YYYY-MM-DD, optionally clearing matching dueDay values. Use dryRun:true to preview changed tasks first.",
+      "description": "Remove the time (dueWithTime or legacy plannedAt) and its reminder from tasks timed on a calendar day YYYY-MM-DD, optionally clearing matching dueDay values. Use dryRun:true to preview changed tasks first.",
       "title": "Clear a day's schedule",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
@@ -933,7 +938,7 @@
     {
       "mcpName": "auto_schedule_tasks",
       "action": "task.autoSchedule",
-      "description": "Dry-run-first scheduler for unscheduled active tasks using daily capacity. Applying schedules requires dryRun:false and confirmApply:true.",
+      "description": "Dry-run-first scheduler: places unscheduled leaf tasks as timed work (dueWithTime) from workStart in timezone, within capacityPerDayMinutes. Work already scheduled on a day counts against its capacity and new work never overlaps a timed task; a parent whose subtasks are scheduled is skipped so estimates are not counted twice. Every day is a working day unless workingDays (mon..sun) says otherwise. Applying requires dryRun:false and confirmApply:true.",
       "title": "Auto-schedule tasks",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false },
@@ -953,10 +958,12 @@
           "work_start": { "type": "string" },
           "dryRun": { "type": "boolean", "description": "Defaults to true. Set false only when applying with confirmApply:true." },
           "dry_run": { "type": "boolean", "description": "Snake-case alias for dryRun." },
-          "confirmApply": { "type": "boolean", "description": "Must be true with dryRun:false to mutate plannedAt values." },
+          "confirmApply": { "type": "boolean", "description": "Must be true with dryRun:false to write the scheduled times." },
           "confirm_apply": { "type": "boolean", "description": "Snake-case alias for confirmApply." },
           "includeProjectIds": { "type": "array", "items": { "type": "string" } },
           "excludeProjectIds": { "type": "array", "items": { "type": "string" } },
+          "workingDays": { "type": "array", "items": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] } },
+          "working_days": { "type": "array", "items": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] } },
           "rules": { "type": "object" }
         }
       }
@@ -985,7 +992,7 @@
     {
       "mcpName": "plan_tasks_for_today",
       "action": "task.planToday",
-      "description": "Plan or unplan multiple tasks for today using plannedAt",
+      "description": "Plan tasks for the app's logical Today as day-only work (dueDay today, any time and reminder cleared), as Add to Today does; a task already timed today keeps its time. unplan:true clears the whole schedule.",
       "title": "Plan tasks for today",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },

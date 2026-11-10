@@ -208,7 +208,7 @@
   }
 
   async function taskCreate(payload) {
-    const data = await buildTaskData(payload);
+    const built = await buildTaskData(payload);
     // Validate recurrence before the task exists, so a bad repeat argument
     // never leaves a half-made task behind.
     const recurrence = payload.repeat
@@ -217,18 +217,18 @@
           startTime: valueOf(payload, 'dueTime', 'due_time'),
         })
       : null;
-    const taskId = await PluginAPI.addTask(data);
-    if (!recurrence) return { taskId };
+    const created = await createTask(built);
+    const taskId = created.taskId;
+    if (!recurrence) return created;
     // The task exists now. Report a recurrence failure next to the id instead
     // of throwing, so the caller does not retry and create a duplicate.
     try {
       const result = await taskSetRecurrence({ taskId, recurrence });
-      return { taskId, repeatCfgId: result.repeatCfgId };
+      return Object.assign({}, created, { repeatCfgId: result.repeatCfgId });
     } catch (error) {
-      return {
-        taskId,
+      return Object.assign({}, created, {
         recurrenceError: { code: (error && error.code) || 'RECURRENCE_FAILED', message: (error && error.message) || String(error) },
-      };
+      });
     }
   }
 
@@ -252,45 +252,72 @@
     if (!isCalendarDay(dueDate)) throw typedError('INVALID_REQUEST', 'dueDate must be a calendar day as YYYY-MM-DD', false);
     if (dueTime === undefined) return { dueDay: dueDate };
     if (typeof dueTime !== 'string' || !DUE_TIME_RE.test(dueTime)) throw typedError('INVALID_REQUEST', 'dueTime must be a 24-hour time as HH:MM', false);
-    const [year, month, date] = dueDate.split('-').map(Number);
-    const [hour, minute] = dueTime.split(':').map(Number);
-    return { dueDay: dueDate, dueWithTime: new Date(year, month - 1, date, hour, minute).getTime() };
+    // A time the clocks skip or repeat is refused rather than guessed.
+    return { dueDay: dueDate, dueWithTime: resolveZonedWallTime(dueDate, dueTime, hostTimeZone()).ms };
   }
 
+  // Mirrors task-create.js: parse once, keep the app from parsing again, set a
+  // time after addTask (which has no dueWithTime), and let subtasks inherit.
   async function buildTaskData(payload) {
     const literal = payload.literal === true;
-    const parsed = literal ? { title: payload.title || '', tagIds: [] } : await parseTaskShortSyntax(payload.title || '');
+    const parentId = valueOf(payload, 'parentId', 'parent_id');
+    const title = payload.title || '';
+    let parsed;
+    if (literal) parsed = { title, tagIds: [] };
+    else if (parentId) parsed = Object.assign(parseDueAndEstimate(title), { tagIds: [] });
+    else parsed = await parseTaskShortSyntax(title);
     const data = {
       title: parsed.title,
       notes: payload.notes || '',
-      projectId: valueOf(payload, 'projectId', 'project_id') || parsed.projectId,
-      parentId: valueOf(payload, 'parentId', 'parent_id'),
       timeEstimate: valueOf(payload, 'timeEstimate', 'time_estimate') ?? parsed.timeEstimate ?? 0,
-      tagIds: mergeUnique(valueOf(payload, 'tagIds', 'tag_ids') || [], parsed.tagIds),
+      isIgnoreShortSyntax: true,
     };
+    if (parentId) {
+      data.parentId = parentId;
+    } else {
+      data.projectId = valueOf(payload, 'projectId', 'project_id') || parsed.projectId;
+      data.tagIds = mergeUnique(valueOf(payload, 'tagIds', 'tag_ids') || [], parsed.tagIds);
+    }
     if (parsed.timeSpent != null) data.timeSpent = parsed.timeSpent;
+    let dueWithTime = parsed.dueWithTime;
     if (parsed.dueDay != null) data.dueDay = parsed.dueDay;
-    if (parsed.dueWithTime != null) data.dueWithTime = parsed.dueWithTime;
-    // Explicit fields win over anything parsed from the title.
     const due = explicitDue(payload);
     if (due.dueDay != null) {
       data.dueDay = due.dueDay;
-      delete data.dueWithTime;
+      dueWithTime = due.dueWithTime;
     }
-    if (due.dueWithTime != null) data.dueWithTime = due.dueWithTime;
-    return data;
+    if (dueWithTime != null) delete data.dueDay;
+    return { data, dueWithTime: dueWithTime == null ? null : dueWithTime };
+  }
+
+  async function createTask(built) {
+    const taskId = await PluginAPI.addTask(built.data);
+    const out = { taskId };
+    if (built.dueWithTime != null) {
+      try {
+        await PluginAPI.updateTask(taskId, { dueWithTime: built.dueWithTime, dueDay: null });
+      } catch (error) {
+        out.scheduleError = { code: (error && error.code) || 'SCHEDULE_FAILED', message: (error && error.message) || String(error) };
+      }
+    }
+    return out;
   }
 
   async function taskCreateWithSubtasks(payload) {
     if (!Array.isArray(payload && payload.subtasks)) throw typedError('INVALID_REQUEST', 'subtasks must be an array', false);
-    const parentData = await buildTaskData(payload);
-    const parentId = await PluginAPI.addTask(parentData);
+    const parent = await createTask(await buildTaskData(payload));
+    const parentId = parent.taskId;
     const subtaskIds = [];
+    const scheduleErrors = [];
     for (const subtask of payload.subtasks) {
-      const childData = await buildTaskData(Object.assign({}, subtask, { parentId }));
-      subtaskIds.push(await PluginAPI.addTask(childData));
+      const child = await createTask(await buildTaskData(Object.assign({}, subtask, { parentId })));
+      subtaskIds.push(child.taskId);
+      if (child.scheduleError) scheduleErrors.push(Object.assign({ taskId: child.taskId }, child.scheduleError));
     }
-    return { parentId, subtaskIds };
+    const out = { parentId, subtaskIds };
+    if (parent.scheduleError) scheduleErrors.unshift(Object.assign({ taskId: parentId }, parent.scheduleError));
+    if (scheduleErrors.length) out.scheduleErrors = scheduleErrors;
+    return out;
   }
 
   async function parseTaskShortSyntax(title) {
@@ -320,6 +347,26 @@
       remove.push(estimate.token);
     }
     parsed.title = stripTokens(title, remove) || title;
+    return parsed;
+  }
+
+  function parseDueAndEstimate(title) {
+    const parsed = { title: title || '' };
+    const remove = [];
+    const due = parseDueSyntax(parsed.title);
+    if (due) {
+      parsed.dueDay = due.dueDay;
+      if (due.dueWithTime != null) parsed.dueWithTime = due.dueWithTime;
+      remove.push(due.token);
+      if (due.timeToken) remove.push(due.timeToken);
+    }
+    const estimate = parseTimeSyntax(parsed.title);
+    if (estimate) {
+      if (estimate.timeSpent != null) parsed.timeSpent = estimate.timeSpent;
+      if (estimate.timeEstimate != null) parsed.timeEstimate = estimate.timeEstimate;
+      remove.push(estimate.token);
+    }
+    parsed.title = stripTokens(parsed.title, remove) || parsed.title;
     return parsed;
   }
 
@@ -529,8 +576,91 @@
     if (!payload.taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
     const updates = Object.assign({}, payload);
     delete updates.taskId;
-    await PluginAPI.updateTask(payload.taskId, updates);
+    const input = {};
+    for (const key of ['dueDay', 'dueWithTime', 'plannedAt']) {
+      if (Object.prototype.hasOwnProperty.call(updates, key)) { input[key] = updates[key]; delete updates[key]; }
+    }
+    if (hasScheduleInput(input)) {
+      const task = await findTask(payload.taskId);
+      if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + payload.taskId + ' not found', false);
+      Object.assign(updates, scheduleWrite(input, task));
+    }
+    if (Object.keys(updates).length === 0) throw typedError('NO_UPDATE_FIELDS', 'No update fields provided', false);
+    await PluginAPI.updateTask(payload.taskId, updates, { isIgnoreShortSyntax: true });
     return { updated: true };
+  }
+
+  // Mirrors task-schedule-write.js: canonical v20 schedule writes.
+  function hasOwnKey(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+  function hasScheduleInput(input) { return ['dueDay', 'dueWithTime', 'plannedAt'].some((key) => hasOwnKey(input, key)); }
+  function timestampInput(value, name) {
+    if (value === null) return null;
+    if (!Number.isInteger(value) || value <= 0) throw typedError('INVALID_REQUEST', name + ' must be a positive millisecond timestamp or null', false);
+    return value;
+  }
+  function scheduleWrite(input, task) {
+    if (!hasScheduleInput(input)) return {};
+    const current = taskSchedule(task || {});
+    let time;
+    let hasTime = false;
+    if (hasOwnKey(input, 'dueWithTime')) { time = timestampInput(input.dueWithTime, 'dueWithTime'); hasTime = true; }
+    if (hasOwnKey(input, 'plannedAt')) {
+      const alias = timestampInput(input.plannedAt, 'plannedAt');
+      if (hasTime && alias !== time) throw typedError('INVALID_REQUEST', 'plannedAt is an alias of dueWithTime; pass one of them, or the same value in both', false);
+      time = alias;
+      hasTime = true;
+    }
+    let day;
+    const hasDay = hasOwnKey(input, 'dueDay');
+    if (hasDay) {
+      day = input.dueDay === '' ? null : input.dueDay;
+      if (day !== null && !isLocalDateString(day)) throw typedError('INVALID_REQUEST', 'dueDay must be a valid YYYY-MM-DD date or null', false);
+    }
+    const patch = {};
+    if (hasTime && time !== null) {
+      if (hasDay && day !== null && day !== localDateStr(new Date(time))) throw typedError('INVALID_REQUEST', 'dueDay ' + day + ' does not match the day of dueWithTime (' + localDateStr(new Date(time)) + '); a timed task is filed by its time', false);
+      patch.dueWithTime = time;
+      patch.dueDay = null;
+      const remindAt = Number(task && task.remindAt);
+      if (current.kind === 'timed' && Number.isFinite(remindAt) && remindAt > 0) patch.remindAt = remindAt + (time - current.at);
+    } else if (hasTime) {
+      patch.dueWithTime = null;
+      patch.remindAt = null;
+      if (hasDay) patch.dueDay = day;
+    } else if (day !== null) {
+      if (current.kind === 'timed') throw typedError('INVALID_REQUEST', 'This task has a time. To make it day-only, pass dueWithTime:null together with dueDay; to move it, pass a new dueWithTime.', false);
+      patch.dueDay = day;
+    } else {
+      patch.dueDay = null;
+    }
+    if (task && task.plannedAt != null && hasTime) patch.plannedAt = null;
+    return patch;
+  }
+  function dayOnlyPatch(task, day) {
+    const patch = { dueDay: day, dueWithTime: null, remindAt: null };
+    if (task && task.plannedAt != null) patch.plannedAt = null;
+    return patch;
+  }
+  function clearPatch(task) {
+    const patch = { dueDay: null, dueWithTime: null, remindAt: null };
+    if (task && task.plannedAt != null) patch.plannedAt = null;
+    return patch;
+  }
+  async function applyPatches(entries, tasksById, dryRun) {
+    const results = [];
+    for (const entry of entries) {
+      const task = tasksById.get(entry.taskId) || null;
+      try {
+        if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + entry.taskId + ' not found', false);
+        const result = { id: entry.taskId, success: true };
+        if (entry.note) result.note = entry.note;
+        const changes = diffTaskPatch(task, entry.patch);
+        if (changes.length) result.changes = changes;
+        if (!dryRun && changes.length) await PluginAPI.updateTask(entry.taskId, entry.patch);
+        results.push(result);
+      } catch (err) { results.push({ id: entry.taskId, success: false, error: err.message || String(err) }); }
+    }
+    return { dryRun, results };
   }
 
   const ADD_REPEAT_CFG_TO_TASK = '[TaskRepeatCfg][Task] Add TaskRepeatCfg to Task';
@@ -922,23 +1052,30 @@
   async function taskBulkUpdateCore(payload, allowedFields) {
     const updates = (payload && payload.updates) || [];
     const dryRun = valueOf(payload || {}, 'dryRun', 'dry_run') === true;
-    const existingTasks = dryRun || allowedFields ? await getTasksBySource('all') : [];
+    const needsTasks = dryRun || allowedFields || updates.some((item) => hasScheduleInput(mapTaskUpdate(item)));
+    const existingTasks = needsTasks ? await getTasksBySource('all') : [];
     const results = [];
     for (const item of updates) {
       const taskId = valueOf(item, 'taskId', 'task_id');
       try {
         if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
         const fullPatch = mapTaskUpdate(item);
-        const patch = pickAllowedPatch(fullPatch, allowedFields);
-        if (Object.keys(patch).length === 0) throw typedError('NO_UPDATE_FIELDS', allowedFields ? 'No allowed fields provided: ' + allowedFields.join(', ') : 'No update fields provided', false);
+        const picked = pickAllowedPatch(fullPatch, allowedFields);
+        if (Object.keys(picked).length === 0) throw typedError('NO_UPDATE_FIELDS', allowedFields ? 'No allowed fields provided: ' + allowedFields.join(', ') : 'No update fields provided', false);
         const task = existingTasks.find((t) => t.id === taskId) || null;
-        if ((dryRun || allowedFields) && !task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+        if ((needsTasks || allowedFields) && !task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+        const patch = Object.assign({}, picked);
+        const scheduleInput = {};
+        for (const key of ['dueDay', 'dueWithTime', 'plannedAt']) {
+          if (hasOwnKey(patch, key)) { scheduleInput[key] = patch[key]; delete patch[key]; }
+        }
+        Object.assign(patch, scheduleWrite(scheduleInput, task));
         const result = { id: taskId, success: true };
         const changes = diffTaskPatch(task, patch);
         if (changes.length) result.changes = changes;
-        const ignoredFields = ignoredPatchFields(fullPatch, patch);
+        const ignoredFields = ignoredPatchFields(fullPatch, picked);
         if (ignoredFields.length) result.ignoredFields = ignoredFields;
-        if (!dryRun) await PluginAPI.updateTask(taskId, patch);
+        if (!dryRun) await PluginAPI.updateTask(taskId, patch, { isIgnoreShortSyntax: true });
         results.push(result);
       }
       catch (err) { results.push({ id: taskId, success: false, error: err.message || String(err) }); }
@@ -958,27 +1095,29 @@
   function diffTaskPatch(task, patch) {
     return Object.entries(patch).map((pair) => ({ field: pair[0], before: task ? task[pair[0]] : undefined, after: pair[1] }));
   }
-  async function taskBulkReschedule(payload) { return taskBulkUpdateCore(payload || {}, ['plannedAt', 'dueDay', 'timeEstimate']); }
+  async function taskBulkReschedule(payload) { return taskBulkUpdateCore(payload || {}, ['dueWithTime', 'plannedAt', 'dueDay', 'timeEstimate']); }
 
+  // Mirrors task-schedule.js: clear times (and reminders) on a calendar day.
   async function taskClearScheduleForDay(payload) {
     payload = payload || {};
     const date = payload.date;
-    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be YYYY-MM-DD', false);
+    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be a valid YYYY-MM-DD date', false);
     const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
     const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
     const clearDueDay = valueOf(payload, 'clearDueDay', 'clear_due_day') === true;
-    const range = dayRangeMs(date);
+    const dryRun = valueOf(payload, 'dryRun', 'dry_run') === true;
     const tasks = await getTasksBySource(includeArchived ? 'all' : 'active');
-    const updates = [];
+    const entries = [];
     for (const task of tasks) {
       if (!includeDone && task.isDone) continue;
       if (!includeArchived && task.isArchived) continue;
-      const patch = {};
-      if (task.plannedAt != null && task.plannedAt >= range[0] && task.plannedAt < range[1]) patch.plannedAt = null;
+      const schedule = taskSchedule(task);
+      let patch = {};
+      if (schedule.kind === 'timed' && schedule.day === date) patch = scheduleWrite({ dueWithTime: null }, task);
       if (clearDueDay && task.dueDay === date) patch.dueDay = null;
-      if (Object.keys(patch).length > 0) updates.push(Object.assign({ taskId: task.id }, patch));
+      if (Object.keys(patch).length > 0) entries.push({ taskId: task.id, patch });
     }
-    const out = await taskBulkUpdateCore(Object.assign({}, payload, { updates }), ['plannedAt', 'dueDay']);
+    const out = await applyPatches(entries, new Map(tasks.map((task) => [task.id, task])), dryRun);
     return Object.assign({}, out, { date, changedCount: out.results.filter((result) => result.success).length });
   }
 
@@ -1101,36 +1240,84 @@
     return out;
   }
 
+  // Mirrors task-schedule.js taskAutoSchedule.
+  const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  function weekdayOf(dateStr) {
+    const parts = dateStr.split('-').map(Number);
+    return WEEKDAY_KEYS[new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
+  }
   async function taskAutoSchedule(payload) {
     payload = payload || {};
     const startDate = payload.startDate || payload.start_date;
     const endDate = payload.endDate || payload.end_date || startDate;
-    if (!isLocalDateString(startDate)) throw typedError('INVALID_REQUEST', 'startDate must be YYYY-MM-DD', false);
-    if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be YYYY-MM-DD', false);
-    const timezone = payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+    if (!isLocalDateString(startDate)) throw typedError('INVALID_REQUEST', 'startDate must be a valid YYYY-MM-DD date', false);
+    if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be a valid YYYY-MM-DD date', false);
+    if (endDate < startDate) throw typedError('INVALID_REQUEST', 'endDate must not be before startDate', false);
+    const timezone = payload.timezone && payload.timezone !== 'local' ? payload.timezone : hostTimeZone();
     const capacityMs = Math.max(1, Number(valueOf(payload, 'capacityPerDayMinutes', 'capacity_per_day_minutes') || 240)) * 60000;
     const defaultEstimateMs = Math.max(1, Number(valueOf(payload, 'defaultEstimateMinutes', 'default_estimate_minutes') || 30)) * 60000;
     const workStart = payload.workStart || payload.work_start || (payload.workHours && payload.workHours[0] && payload.workHours[0].start) || '09:00';
+    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(workStart)) throw typedError('INVALID_REQUEST', 'workStart must be HH:MM', false);
+    const workingDays = valueOf(payload, 'workingDays', 'working_days') || WEEKDAY_KEYS.slice(1).concat('sun');
+    if (!Array.isArray(workingDays) || workingDays.some((day) => WEEKDAY_KEYS.indexOf(day) === -1)) throw typedError('INVALID_REQUEST', 'workingDays must list days out of ' + WEEKDAY_KEYS.join(', '), false);
     const dryRun = valueOf(payload, 'dryRun', 'dry_run') !== false || valueOf(payload, 'confirmApply', 'confirm_apply') !== true;
-    const candidates = (await getTasksBySource('active'))
-      .filter((task) => !task.isDone && !task.isArchived && task.plannedAt == null)
-      .filter((task) => !(payload.rules && payload.rules.topLevelOnly) || !task.parentId)
+
+    const tasks = (await getTasksBySource('active')).filter((task) => !task.isDone && !task.isArchived);
+    const parentIds = new Set(tasks.filter((task) => task.parentId).map((task) => task.parentId));
+    const isLeaf = (task) => !parentIds.has(task.id) && !(Array.isArray(task.subTaskIds) && task.subTaskIds.length > 0);
+    const estimateOf = (task) => (Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs);
+    const days = localDateRange(startDate, endDate)
+      .filter((date) => workingDays.indexOf(weekdayOf(date)) !== -1)
+      .map((date) => ({ date, existingMs: 0, plannedMs: 0, busy: [], nextMs: resolveZonedWallTime(date, workStart, timezone, 'earlier').ms }));
+    const dayByDate = new Map(days.map((day) => [day.date, day]));
+    for (const task of tasks) {
+      const schedule = taskSchedule(task);
+      const day = schedule.day && dayByDate.get(schedule.day);
+      if (!day || !isLeaf(task)) continue;
+      day.existingMs += estimateOf(task);
+      if (schedule.kind === 'timed') day.busy.push([schedule.at, schedule.at + estimateOf(task)]);
+    }
+    const topLevelOnly = !!(payload.rules && payload.rules.topLevelOnly);
+    const candidates = tasks
+      .filter((task) => taskSchedule(task).kind === 'none')
+      .filter((task) => !topLevelOnly || !task.parentId)
       .filter((task) => !(payload.includeProjectIds && payload.includeProjectIds.length) || payload.includeProjectIds.includes(task.projectId))
       .filter((task) => !(payload.excludeProjectIds && payload.excludeProjectIds.length) || !payload.excludeProjectIds.includes(task.projectId))
-      .sort((a, b) => String(a.dueDay || '9999-99-99').localeCompare(String(b.dueDay || '9999-99-99')) || String(a.title || '').localeCompare(String(b.title || '')));
-    const days = localDateRange(startDate, endDate).map((date) => ({ date, usedMs: 0, nextMs: zonedWallTimeToMs(date, workStart, timezone) }));
+      .sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+    const candidateIds = new Set(candidates.map((task) => task.id));
     const updates = [];
     const skipped = [];
     for (const task of candidates) {
-      const estimateMs = Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs;
-      const day = days.find((candidate) => candidate.usedMs + estimateMs <= capacityMs);
+      if (!topLevelOnly && tasks.some((child) => child.parentId === task.id && candidateIds.has(child.id))) {
+        skipped.push(Object.assign(compactTaskSummary(task), { reason: 'subtasks_scheduled_instead' }));
+        continue;
+      }
+      const estimateMs = estimateOf(task);
+      const day = days.find((candidate) => candidate.existingMs + candidate.plannedMs + estimateMs <= capacityMs);
       if (!day) { skipped.push(Object.assign(compactTaskSummary(task), { reason: 'capacity_exhausted' })); continue; }
-      updates.push({ taskId: task.id, plannedAt: day.nextMs });
-      day.usedMs += estimateMs;
-      day.nextMs += estimateMs;
+      let start = day.nextMs;
+      for (let moved = true; moved; ) {
+        moved = false;
+        for (const busy of day.busy) {
+          if (start < busy[1] && start + estimateMs > busy[0]) { start = busy[1]; moved = true; }
+        }
+      }
+      day.busy.push([start, start + estimateMs]);
+      day.nextMs = start + estimateMs;
+      day.plannedMs += estimateMs;
+      const patch = scheduleWrite({ dueWithTime: start }, task);
+      updates.push({ taskId: task.id, dueWithTime: start, plannedAt: start, date: day.date, changes: Object.entries(patch).map((pair) => ({ field: pair[0], before: task[pair[0]] == null ? null : task[pair[0]], after: pair[1] })) });
     }
-    const result = { dryRun, startDate, endDate, timezone, updates, scheduledCount: updates.length, skipped };
-    if (!dryRun) result.results = (await taskBulkUpdateCore({ updates, dryRun: false }, ['plannedAt'])).results;
+    const result = {
+      dryRun, startDate, endDate, timezone, workingDays,
+      capacity: days.map((day) => ({ date: day.date, existingMs: day.existingMs, plannedMs: day.plannedMs, capacityMs })),
+      updates, scheduledCount: updates.length, skipped,
+    };
+    if (!dryRun) {
+      const byId = new Map(tasks.map((task) => [task.id, task]));
+      const entries = updates.map((update) => ({ taskId: update.taskId, patch: scheduleWrite({ dueWithTime: update.dueWithTime }, byId.get(update.taskId)) }));
+      result.results = (await applyPatches(entries, byId, false)).results;
+    }
     return result;
   }
 
@@ -1281,10 +1468,21 @@
     return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour, minute: parts.minute };
   }
 
+  // Mirrors task-mutate.js: day-only on the logical Today, never an invented time.
   async function taskPlanToday(payload) {
     const taskIds = valueOf(payload || {}, 'taskIds', 'task_ids') || [];
-    const plannedAt = payload && payload.unplan ? null : startOfTodayMs();
-    return taskBulkUpdate({ updates: taskIds.map((taskId) => ({ taskId, plannedAt })) });
+    const tasksById = new Map((await getTasksBySource('active')).map((task) => [task.id, task]));
+    const day = payload && payload.unplan ? null : await getDayContext();
+    const entries = taskIds.map((taskId) => {
+      const task = tasksById.get(taskId);
+      if (!day) return { taskId, patch: clearPatch(task) };
+      const schedule = task ? taskSchedule(task) : null;
+      if (schedule && schedule.kind === 'timed' && scheduleDayIn(schedule, day.startOfNextDayDiffMs) === day.todayStr) return { taskId, patch: {}, note: 'already scheduled with a time today' };
+      return { taskId, patch: dayOnlyPatch(task, day.todayStr) };
+    });
+    const out = await applyPatches(entries, tasksById, false);
+    if (day) out.dayContext = day;
+    return out;
   }
 
   async function taskAddTag(payload) {
@@ -1383,7 +1581,7 @@
   function mapTaskUpdate(item) {
     const data = {};
     const mappings = [
-      ['title', 'title'], ['notes', 'notes'], ['isDone', 'is_done'], ['dueDay', 'due_day'], ['plannedAt', 'planned_at'],
+      ['title', 'title'], ['notes', 'notes'], ['isDone', 'is_done'], ['dueDay', 'due_day'], ['dueWithTime', 'due_with_time'], ['plannedAt', 'planned_at'],
       ['timeEstimate', 'time_estimate'], ['timeSpent', 'time_spent'], ['tagIds', 'tag_ids'], ['projectId', 'project_id']
     ];
     for (const pair of mappings) {

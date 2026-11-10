@@ -7,6 +7,7 @@ async function withSyntheticTaskFields(tasks) {
     noteLength: String(task.notes || "").length,
     subtaskCount: Array.isArray(task.subTaskIds) ? task.subTaskIds.length : tasks.filter((candidate) => candidate.parentId === task.id).length,
     isRecurring: !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle),
+    ...scheduleFields(task),
     parentTitle: task.parentId ? byId.get(task.parentId)?.title : undefined,
     projectTitle: task.projectId ? projectById.get(task.projectId)?.title || projectById.get(task.projectId)?.name : undefined,
   }));
@@ -27,8 +28,9 @@ function sortAndPageTasks(tasks, payload) {
 }
 
 function compareTaskField(a, b, field) {
-  const av = a[field];
-  const bv = b[field];
+  // plannedAt sorts by the normalized time, so v20 dueWithTime tasks sort too.
+  const av = field === "plannedAt" ? taskSchedule(a).at : a[field];
+  const bv = field === "plannedAt" ? taskSchedule(b).at : b[field];
   if (av == null && bv == null) return String(a.title || "").localeCompare(String(b.title || ""));
   if (av == null) return 1;
   if (bv == null) return -1;
@@ -36,14 +38,49 @@ function compareTaskField(a, b, field) {
   return String(av).localeCompare(String(bv)) || String(a.title || "").localeCompare(String(b.title || ""));
 }
 
+// validTimestamp returns a positive finite millisecond value, or null.
+function validTimestamp(value) {
+  if (value == null || value === "" || typeof value === "boolean") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// taskSchedule is the one place that reads a task's schedule fields. Stock
+// v20 stores timed work in dueWithTime and day-only work in dueDay; older
+// suites wrote plannedAt. dueWithTime wins over plannedAt, as it does in the
+// app's REST API, and a timed task wins over its dueDay. A day-only task
+// never gets a time.
+//   kind: "timed" | "day" | "none"; at: ms or null; day: local YYYY-MM-DD or null
+function taskSchedule(task) {
+  const dueWithTime = validTimestamp(task.dueWithTime);
+  if (dueWithTime != null) return { kind: "timed", at: dueWithTime, day: localDateStr(new Date(dueWithTime)), source: "dueWithTime" };
+  const plannedAt = validTimestamp(task.plannedAt);
+  if (plannedAt != null) return { kind: "timed", at: plannedAt, day: localDateStr(new Date(plannedAt)), source: "plannedAt" };
+  if (isLocalDateString(task.dueDay)) return { kind: "day", at: null, day: task.dueDay, source: "dueDay" };
+  return { kind: "none", at: null, day: null, source: null };
+}
+
+// scheduleFields is the normalized schedule as output fields.
+function scheduleFields(task) {
+  const schedule = taskSchedule(task);
+  return { scheduleKind: schedule.kind, scheduledDay: schedule.day, scheduledAt: schedule.at };
+}
+
+// compactTaskSummary keeps plannedAt as a compatibility field: it carries the
+// normalized time of a timed task (from dueWithTime or legacy plannedAt) and
+// is null for day-only and unscheduled tasks.
 function compactTaskSummary(task) {
+  const schedule = taskSchedule(task);
   return {
     id: task.id,
     title: task.title,
     projectId: task.projectId,
     parentId: task.parentId,
     dueDay: task.dueDay,
-    plannedAt: task.plannedAt,
+    dueWithTime: task.dueWithTime ?? null,
+    plannedAt: schedule.at,
+    scheduleKind: schedule.kind,
+    scheduledDay: schedule.day,
     timeEstimate: task.timeEstimate,
     isDone: !!task.isDone,
     isArchived: !!task.isArchived,
@@ -55,7 +92,10 @@ function hasSuspiciousDatesOrEstimates(task) {
   const tenYears = Date.now() + 10 * 365 * 86400000;
   const oneYearMs = 365 * 86400000;
   if (task.dueDay != null && !isLocalDateString(task.dueDay)) return true;
-  if (task.plannedAt != null && (!Number.isFinite(Number(task.plannedAt)) || Number(task.plannedAt) < 0 || Number(task.plannedAt) > tenYears)) return true;
+  for (const field of ["plannedAt", "dueWithTime"]) {
+    const value = task[field];
+    if (value != null && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > tenYears)) return true;
+  }
   if (task.timeEstimate != null && (!Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) < 0 || Number(task.timeEstimate) > oneYearMs)) return true;
   return false;
 }
@@ -94,7 +134,9 @@ module.exports = {
   isLocalDateString,
   localDateStr,
   pickFields,
+  scheduleFields,
   sortAndPageTasks,
+  taskSchedule,
   valueOf,
   withSyntheticTaskFields,
 };

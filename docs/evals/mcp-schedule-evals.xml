@@ -4,11 +4,11 @@
     <answer>get_schedule_health</answer>
   </qa_pair>
   <qa_pair>
-    <question>A user asks which active top-level tasks have neither plannedAt nor dueDay. Which exact MCP tool should an agent call first?</question>
+    <question>A user asks which active top-level tasks have no schedule at all: no dueWithTime, no legacy plannedAt and no dueDay. Which exact MCP tool should an agent call first?</question>
     <answer>find_unscheduled_active_tasks</answer>
   </qa_pair>
   <qa_pair>
-    <question>A user wants tasks planned between two local dates, grouped by day and ordered by plannedAt. Which exact MCP tool provides that read-only view?</question>
+    <question>A user wants tasks planned between two local dates, grouped by day, with timed work ordered by time and day-only work listed after it. Which exact MCP tool provides that read-only view?</question>
     <answer>get_schedule_range</answer>
   </qa_pair>
   <qa_pair>

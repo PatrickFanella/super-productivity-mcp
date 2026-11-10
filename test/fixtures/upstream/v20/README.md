@@ -78,7 +78,7 @@ from v20, not a regression; the issue that fixes it updates the test.
 | Area | Current behavior | v20 behavior | Issue |
 | --- | --- | --- | --- |
 | Today | `tagId: "TODAY"` matches the stored tag ID: 2 legacy tasks. | Date-based: 5 tasks on the logical day. | #20 |
-| Schedule reads | Range and health read `plannedAt` only; timed v20 tasks look unscheduled. | Tasks carry `dueWithTime` or `dueDay`. | #19 |
+| Schedule reads | Fixed in #19: range, health, stale, unscheduled and shaped reads use one normalized schedule (`dueWithTime`, then legacy `plannedAt`, then `dueDay`). Before: `plannedAt` only, so timed v20 tasks looked unscheduled. | Tasks carry `dueWithTime` or `dueDay`. | #19 |
 | Archive | Fixed in #15: the Go server calls `POST /tasks/:id/archive` when Local REST is configured. Without REST both plugin projections fail with `UNSUPPORTED_ACTION`. | `POST /tasks/:id/archive`. | #15 |
 | Restore | Fails with `UNSUPPORTED_ACTION`. | `POST /tasks/:id/restore`. | #25 |
 | Tracking | Start writes `currentTimestamp`; current task reads it. | `startTracking` / `POST /task-control/current`. | #16 |

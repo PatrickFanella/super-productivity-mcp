@@ -87,22 +87,72 @@ test("baseline gap (#20): tagId TODAY matches stored tag ids, not the logical da
   assert.notDeepEqual(ids(both.modular), upstream);
 });
 
-test("baseline gap (#19): schedule range reads only legacy plannedAt", async () => {
-  const both = await runBoth("task.scheduleRange", { startDate: "2026-11-09" });
+function dayIds(side) {
+  return side.result.days.map((day) => [day.date, day.tasks.map((task) => task.id)]);
+}
+
+test("schedule range reads dueWithTime, legacy plannedAt and day-only dueDay (#19)", async () => {
+  const both = await runBoth("task.scheduleRange", { startDate: "2026-11-09", endDate: "2026-11-10" });
   for (const side of [both.modular, both.packaged]) {
     assert.equal(side.ok, true);
-    assert.deepEqual(side.result.days.map((day) => [day.date, day.tasks.map((task) => task.id)]), [["2026-11-09", ["fx-legacy-planned"]]]);
+    assert.deepEqual(dayIds(side), [
+      // Timed work by time, then day-only work. fx-mixed-legacy uses its
+      // dueWithTime (today 16:00), not its older plannedAt.
+      ["2026-11-09", ["fx-timed-today", "fx-legacy-planned", "fx-timed-with-due-day", "fx-mixed-legacy", "fx-day-today"]],
+      // Calendar days: the 02:00 task is on 2026-11-10 here; logical Today is #20.
+      ["2026-11-10", ["fx-timed-before-day-start", "fx-day-tomorrow", "fx-recurring"]],
+    ]);
+    const dayOnly = side.result.days[0].tasks.find((task) => task.id === "fx-day-today");
+    assert.equal(dayOnly.plannedAt, null, "a day-only task gets no invented time");
+    assert.equal(dayOnly.scheduleKind, "day");
+    const mixed = side.result.days[0].tasks.find((task) => task.id === "fx-mixed-legacy");
+    assert.equal(mixed.plannedAt, mixed.dueWithTime, "plannedAt carries the normalized time");
   }
+  assert.deepEqual(both.modular.result, both.packaged.result);
 });
 
-test("baseline gap (#19): schedule health counts planned work by plannedAt only", async () => {
-  const both = await runBoth("task.scheduleHealth", { date: "2026-11-09" });
-  for (const side of [both.modular, both.packaged]) {
-    assert.equal(side.ok, true);
-    assert.deepEqual(side.result.tasks.plannedToday.map((task) => task.id), ["fx-legacy-planned"]);
-    // Timed v20 tasks have no plannedAt or dueDay, so they look unscheduled.
-    const unscheduled = side.result.tasks.unscheduledActiveTopLevel.map((task) => task.id);
-    assert.ok(unscheduled.includes("fx-timed-today"));
+test("schedule health, stale and unscheduled reads agree on one schedule per task (#19)", async () => {
+  const health = await runBoth("task.scheduleHealth", { date: "2026-11-09" });
+  const stale = await runBoth("task.findStaleSchedule", { beforeDate: "2026-11-09" });
+  const unscheduled = await runBoth("task.findUnscheduledActive", { topLevelOnly: false });
+  const range = await runBoth("task.scheduleRange", { startDate: "2026-01-01", endDate: "2026-12-31" });
+  for (const side of ["modular", "packaged"]) {
+    const h = health[side].result;
+    assert.deepEqual(h.tasks.plannedToday.map((task) => task.id).sort(), ["fx-day-today", "fx-legacy-planned", "fx-mixed-legacy", "fx-timed-today", "fx-timed-with-due-day"]);
+    const unscheduledTop = h.tasks.unscheduledActiveTopLevel.map((task) => task.id);
+    assert.equal(unscheduledTop.includes("fx-timed-today"), false);
+    assert.ok(unscheduledTop.includes("fx-parent"));
+    assert.deepEqual(stale[side].result.tasks.map((task) => [task.id, task.staleDueDay, task.stalePlannedAt]).sort(), [
+      ["fx-day-overdue", true, false],
+      ["fx-dst-fall", false, true],
+      ["fx-dst-spring", false, true],
+      ["fx-legacy-stale-today-tag", true, false],
+    ]);
+    // Every active, unfinished task is either in the year's range or unscheduled, never both.
+    const scheduledIds = new Set(range[side].result.days.flatMap((day) => day.tasks.map((task) => task.id)));
+    const unscheduledIds = new Set(unscheduled[side].result.tasks.map((task) => task.id));
+    for (const task of tasksFixture.active.filter((t) => !t.isDone)) {
+      assert.notEqual(scheduledIds.has(task.id), unscheduledIds.has(task.id), task.id);
+    }
+  }
+  assert.deepEqual(health.modular.result, health.packaged.result);
+  assert.deepEqual(stale.modular.result, stale.packaged.result);
+});
+
+test("get_tasks filters and sorting use the normalized schedule (#19)", async () => {
+  const unscheduled = await runBoth("task.list", { unscheduled: true, parentsOnly: true, includeDone: false, fields: ["id"] });
+  const sorted = await runBoth("task.list", { sortBy: "plannedAt", limit: 3, fields: ["id"] });
+  const synthetic = await runBoth("task.list", { includeSynthetic: true, fields: ["id", "scheduleKind", "scheduledDay", "scheduledAt"] });
+  for (const side of ["modular", "packaged"]) {
+    const ids = unscheduled[side].result.tasks.map((task) => task.id);
+    assert.equal(ids.includes("fx-timed-today"), false);
+    assert.equal(ids.includes("fx-legacy-planned"), false);
+    assert.ok(ids.includes("fx-backlog-001"));
+    assert.deepEqual(sorted[side].result.tasks.map((task) => task.id), ["fx-dst-spring", "fx-dst-fall", "fx-timed-today"]);
+    const byId = new Map(synthetic[side].result.tasks.map((task) => [task.id, task]));
+    assert.deepEqual(byId.get("fx-day-today"), { id: "fx-day-today", scheduleKind: "day", scheduledDay: "2026-11-09", scheduledAt: null });
+    assert.equal(byId.get("fx-legacy-planned").scheduleKind, "timed");
+    assert.equal(byId.get("fx-backlog-001").scheduleKind, "none");
   }
 });
 

@@ -190,6 +190,12 @@ function buildTasks() {
     ],
     active,
     archived,
+    // Standalone notes: PluginAPI.getAppState().notes and GET /notes shape.
+    notes: [
+      { id: "fx-note-project", content: "Fixture project note body", projectId: "fixture-project-alpha", isPinnedToToday: false, created: local("2026-11-01", "09:00"), modified: local("2026-11-02", "09:00") },
+      { id: "fx-note-today", content: "Fixture Today note body", projectId: null, isPinnedToToday: true, created: local("2026-11-09", "08:00"), modified: local("2026-11-09", "08:00") },
+      { id: "fx-note-project-today", content: "Fixture pinned project note body", projectId: "fixture-project-beta", isPinnedToToday: true, created: local("2026-11-05", "09:00"), modified: local("2026-11-05", "09:00") },
+    ],
   };
 }
 

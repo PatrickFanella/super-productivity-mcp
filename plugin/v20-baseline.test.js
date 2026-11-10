@@ -370,3 +370,22 @@ test("habit history reads full simple counters with units in both projections (#
     assert.deepEqual(writes(setDay[side].calls), []);
   }
 });
+
+test("notes are read from the plugin's app state with explicit placement (#17)", async () => {
+  const all = await runBoth("note.list", {});
+  const project = await runBoth("note.list", { projectId: "fixture-project-beta" });
+  const pinned = await runBoth("note.list", { pinnedToToday: true });
+  const one = await runBoth("note.get", { noteId: "fx-note-today" });
+  const missing = await runBoth("note.get", { noteId: "fx-missing" });
+  const older = await runBoth("note.list", {}, { getAppState: undefined });
+  assert.deepEqual(all.modular.result, all.packaged.result);
+  for (const side of ["modular", "packaged"]) {
+    assert.deepEqual(all[side].result.notes.map((n) => n.id).sort(), ["fx-note-project", "fx-note-project-today", "fx-note-today"]);
+    assert.deepEqual(project[side].result.notes.map((n) => n.id), ["fx-note-project-today"]);
+    assert.deepEqual(pinned[side].result.notes.map((n) => n.id).sort(), ["fx-note-project-today", "fx-note-today"]);
+    assert.deepEqual(Object.keys(one[side].result.note).sort(), ["content", "created", "id", "isPinnedToToday", "modified", "projectId"]);
+    assert.equal(one[side].result.note.projectId, null);
+    assert.equal(missing[side].error.code, "NOTE_NOT_FOUND");
+    assert.equal(older[side].error.code, "UNSUPPORTED_ACTION");
+  }
+});

@@ -58,6 +58,7 @@ function createPluginApi(overrides = {}) {
     simpleCounters: clone(counters.simpleCounters),
     pluginCounters: clone(counters.pluginCounters),
     repeatCfgs: new Map(repeat.repeatCfgs.map((cfg) => [cfg.id, clone(cfg)])),
+    notes: clone(fixture.notes || []),
     currentTaskId: null,
     nextId: 1,
   };
@@ -87,7 +88,7 @@ function createPluginApi(overrides = {}) {
         tasks: byId([...state.active.values()]),
         projects: byId(state.projects),
         tags: byId(state.tags),
-        notes: {},
+        notes: byId(state.notes),
         taskRepeatCfgs: byId([...state.repeatCfgs.values()]),
         simpleCounters: byId(state.simpleCounters),
         globalConfig: {},

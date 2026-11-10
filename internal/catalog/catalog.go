@@ -32,6 +32,10 @@ type Tool struct {
 	// Scope is the access scope a caller needs to see or call the tool
 	// (one of Scopes). Empty means the tool is always available.
 	Scope string `json:"scope,omitempty"`
+	// ContentScope is an extra scope the tool also needs because it returns
+	// personal content (only "notes" today). A tool with ContentScope "notes"
+	// is listed and callable only when both Scope and "notes" are granted.
+	ContentScope string `json:"contentScope,omitempty"`
 	// Aliases are extra MCP names that resolve to this tool, kept for
 	// compatibility with other Super Productivity MCP servers.
 	Aliases []string `json:"aliases,omitempty"`
@@ -44,8 +48,8 @@ type Tool struct {
 	outputSchema *jsonschema.Schema
 }
 
-// Access scopes a tool can require. "notes" does not gate any tool; without
-// it, task notes are removed from results.
+// Access scopes a tool can require. "notes" gates tools whose contentScope is
+// notes; without it, task notes and note content are removed from results.
 const (
 	ScopeRead   = "read"
 	ScopeNotes  = "notes"
@@ -113,6 +117,9 @@ func Load() (*Catalog, error) {
 		}
 		if !isToolScope(t.Scope) {
 			return nil, fmt.Errorf("catalog: tool %q has unknown scope %q", t.Action, t.Scope)
+		}
+		if t.ContentScope != "" && t.ContentScope != ScopeNotes {
+			return nil, fmt.Errorf("catalog: tool %q has unknown contentScope %q", t.Action, t.ContentScope)
 		}
 		if t.MCPName != "" {
 			if _, dup := c.byMCP[t.MCPName]; dup {

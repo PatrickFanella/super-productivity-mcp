@@ -103,6 +103,7 @@ function validateCatalogShape(catalog = readCatalog()) {
       knownActions.add(tool.action);
     }
     if (tool.scope !== undefined && !toolScopes.has(tool.scope)) errors.push(`tools[${index}].scope must be one of ${[...toolScopes].join(", ")}`);
+    if (tool.contentScope !== undefined && tool.contentScope !== "notes") errors.push(`tools[${index}].contentScope must be "notes" when present`);
     if (tool.title !== undefined && (typeof tool.title !== "string" || !tool.title.trim())) errors.push(`tools[${index}].title must be a non-empty string when present`);
     if (tool.annotations !== undefined) {
       if (!isPlainObject(tool.annotations)) {

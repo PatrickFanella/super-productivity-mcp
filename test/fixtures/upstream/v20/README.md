@@ -35,7 +35,7 @@ running app.
 | File | Contents |
 | --- | --- |
 | `build.js` | Generates every JSON file. `--check` fails if a file drifted. |
-| `tasks.json` | Projects, tags, the logical day, 128 active and 4 archived tasks. |
+| `tasks.json` | Projects, tags, the logical day, 128 active and 4 archived tasks, and 3 standalone notes. |
 | `repeat-cfgs.json` | Repeat configs, including one with fields REST cannot write. |
 | `simple-counters.json` | Simple counters and the plugin's scalar counters. |
 | `rest-envelopes.json` | Local REST responses: successes, route errors and transport errors. |

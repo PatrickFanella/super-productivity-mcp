@@ -61,6 +61,10 @@ func (s *Server) resourceList() []resourceListEntry {
 		return out
 	}
 	for _, res := range s.catalog.MCPResources() {
+		// A resource backed by a content tool is listed only with its grant.
+		if tool := s.catalog.LookupAction(res.Action); tool != nil && !s.allowed(tool) {
+			continue
+		}
 		out = append(out, resourceListEntry{URI: res.URI, Name: res.Name, Description: res.Description, MimeType: res.MimeType})
 	}
 	return out

@@ -878,32 +878,28 @@
     }
   }
 
+  // Mirrors plugin/bridge/actions/task-mutate.js: PluginAPI.startTracking and
+  // stopTracking, never currentTimestamp writes, which v20 ignores.
+  const TRACKING_UNAVAILABLE = 'this Super Productivity runtime lacks PluginAPI.startTracking/stopTracking; configure Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN) instead';
   async function taskStart(payload) {
     const taskId = valueOf(payload || {}, 'taskId', 'task_id');
     if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
-    const tasks = await PluginAPI.getTasks();
-    const task = tasks.find((t) => t.id === taskId);
+    if (typeof PluginAPI.startTracking !== 'function') throw typedError('UNSUPPORTED_ACTION', 'Starting a task: ' + TRACKING_UNAVAILABLE, false);
+    const task = await findTask(taskId);
     if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
-    if (task.isDone) throw typedError('TASK_DONE', 'Cannot start completed task ' + taskId, false);
-    const active = tasks.find((t) => t.currentTimestamp > 0 && t.id !== taskId);
-    if (active) await PluginAPI.updateTask(active.id, { currentTimestamp: null });
-    await PluginAPI.updateTask(taskId, { currentTimestamp: Date.now() });
-    return { started: true };
+    if (task.isDone) throw typedError('TASK_DONE', 'Cannot start completed task ' + taskId + '; mark it not done first', false);
+    await PluginAPI.startTracking(taskId);
+    return { started: true, via: 'plugin' };
   }
 
   async function taskStop() {
-    const tasks = await PluginAPI.getTasks();
-    const active = tasks.find((t) => t.currentTimestamp > 0);
-    if (!active) return { stopped: false };
-    await PluginAPI.updateTask(active.id, { currentTimestamp: null });
-    return { stopped: true };
+    if (typeof PluginAPI.stopTracking !== 'function') throw typedError('UNSUPPORTED_ACTION', 'Stopping tracking: ' + TRACKING_UNAVAILABLE, false);
+    await PluginAPI.stopTracking();
+    return { stopped: true, via: 'plugin' };
   }
 
   async function taskCurrent() {
-    const tasks = await PluginAPI.getTasks();
-    const active = tasks.find((t) => t.currentTimestamp > 0);
-    if (!active) return { task: null };
-    return { task: { id: active.id, title: active.title, isDone: active.isDone, projectId: active.projectId, parentId: active.parentId, tagIds: active.tagIds, dueDay: active.dueDay } };
+    throw typedError('UNSUPPORTED_ACTION', 'Reading the tracked task needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN); the plugin API has no current-task read', false);
   }
 
   async function taskBulkComplete(payload) {

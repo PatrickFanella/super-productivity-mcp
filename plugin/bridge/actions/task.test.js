@@ -85,71 +85,46 @@ test("task.createWithSubtasks creates parent then child tasks", async () => {
   assert.equal(calls[1].timeEstimate, 30 * 60 * 1000);
 });
 
-test("task.start starts requested task and stops existing tracked task", async () => {
-  const updates = [];
+test("task.start uses PluginAPI.startTracking and never writes currentTimestamp", async () => {
+  const calls = [];
   global.PluginAPI = {
-    getTasks: async () => [
-      { id: "old", title: "Old", currentTimestamp: 123, isDone: false },
-      { id: "new", title: "New", currentTimestamp: null, isDone: false },
-    ],
-    updateTask: async (taskId, data) => updates.push({ taskId, data }),
+    getTasks: async () => [{ id: "new", title: "New", isDone: false }],
+    startTracking: async (taskId) => calls.push(["startTracking", taskId]),
+    updateTask: async (...args) => calls.push(["updateTask", ...args]),
   };
-
-  const out = await taskActions["task.start"]({ taskId: "new" });
-
-  assert.deepEqual(out, { started: true });
-  assert.equal(updates[0].taskId, "old");
-  assert.deepEqual(updates[0].data, { currentTimestamp: null });
-  assert.equal(updates[1].taskId, "new");
-  assert.equal(typeof updates[1].data.currentTimestamp, "number");
+  assert.deepEqual(await taskActions["task.start"]({ task_id: "new" }), { started: true, via: "plugin" });
+  assert.deepEqual(calls, [["startTracking", "new"]]);
 });
 
-test("task.start rejects completed tasks", async () => {
+test("task.start rejects completed and unknown tasks before tracking", async () => {
+  let started = false;
   global.PluginAPI = {
     getTasks: async () => [{ id: "done", title: "Done", isDone: true }],
+    startTracking: async () => { started = true; },
   };
-
   await assert.rejects(taskActions["task.start"]({ taskId: "done" }), (err) => err.code === "TASK_DONE");
+  await assert.rejects(taskActions["task.start"]({ taskId: "missing" }), (err) => err.code === "TASK_NOT_FOUND");
+  assert.equal(started, false);
 });
 
-test("task.stop clears current timestamp and is idempotent", async () => {
+test("task tracking reports a host without the tracking API as unsupported", async () => {
   const updates = [];
-  global.PluginAPI = {
-    getTasks: async () => [{ id: "active", currentTimestamp: 123, isDone: false }],
-    updateTask: async (taskId, data) => updates.push({ taskId, data }),
-  };
-
-  const out = await taskActions["task.stop"]({});
-
-  assert.deepEqual(out, { stopped: true });
-  assert.deepEqual(updates, [{ taskId: "active", data: { currentTimestamp: null } }]);
-
-  global.PluginAPI = { getTasks: async () => [] };
-  assert.deepEqual(await taskActions["task.stop"]({}), { stopped: false });
+  global.PluginAPI = { getTasks: async () => [{ id: "a", isDone: false }], updateTask: async (...args) => updates.push(args) };
+  await assert.rejects(taskActions["task.start"]({ taskId: "a" }), (err) => err.code === "UNSUPPORTED_ACTION");
+  await assert.rejects(taskActions["task.stop"]({}), (err) => err.code === "UNSUPPORTED_ACTION");
+  assert.deepEqual(updates, []);
 });
 
-test("task.current returns currently tracked task summary", async () => {
-  global.PluginAPI = {
-    getTasks: async () => [
-      { id: "idle", currentTimestamp: null },
-      { id: "active", title: "Active", currentTimestamp: 123, isDone: false, projectId: "p1", parentId: null, tagIds: ["t1"], dueDay: "2026-05-13" },
-    ],
-  };
+test("task.stop uses PluginAPI.stopTracking", async () => {
+  let stopped = 0;
+  global.PluginAPI = { stopTracking: async () => { stopped++; } };
+  assert.deepEqual(await taskActions["task.stop"]({}), { stopped: true, via: "plugin" });
+  assert.equal(stopped, 1);
+});
 
-  const out = await taskActions["task.current"]({});
-
-  assert.deepEqual(out.task, {
-    id: "active",
-    title: "Active",
-    isDone: false,
-    projectId: "p1",
-    parentId: null,
-    tagIds: ["t1"],
-    dueDay: "2026-05-13",
-  });
-
-  global.PluginAPI = { getTasks: async () => [] };
-  assert.deepEqual(await taskActions["task.current"]({}), { task: null });
+test("task.current needs Local REST because the plugin API cannot read it", async () => {
+  global.PluginAPI = { getTasks: async () => [{ id: "active", currentTimestamp: 123 }] };
+  await assert.rejects(taskActions["task.current"]({}), (err) => err.code === "UNSUPPORTED_ACTION");
 });
 
 test("task.bulkComplete completes existing tasks with partial results", async () => {
@@ -521,39 +496,6 @@ test("task.restore is unavailable in the plugin and never calls REST from it", a
   global.fetch = oldFetch;
   if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
   else process.env.SP_LOCAL_REST_URL = oldUrl;
-});
-
-test("task start/stop/current prefer configured local REST", async () => {
-  const oldUrl = process.env.SP_LOCAL_REST_URL;
-  const oldFetch = global.fetch;
-  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3219";
-  const calls = [];
-  global.PluginAPI = {
-    getTasks: async () => {
-      throw new Error("Plugin fallback should not be used");
-    },
-  };
-  global.fetch = async (url, options = {}) => {
-    calls.push({ url, method: options.method || "GET" });
-    return {
-      ok: true,
-      status: 200,
-      text: async () => (url.endsWith("/task-control/current") ? JSON.stringify({ task: { id: "active", title: "Active" } }) : ""),
-    };
-  };
-
-  assert.deepEqual(await taskActions["task.start"]({ task_id: "task-1" }), { started: true, via: "localRest" });
-  assert.deepEqual(await taskActions["task.stop"]({}), { stopped: true, via: "localRest" });
-  assert.deepEqual(await taskActions["task.current"]({}), { task: { id: "active", title: "Active" }, via: "localRest" });
-  assert.deepEqual(calls, [
-    { url: "http://127.0.0.1:3219/tasks/task-1/start", method: "POST" },
-    { url: "http://127.0.0.1:3219/task-control/stop", method: "POST" },
-    { url: "http://127.0.0.1:3219/task-control/current", method: "GET" },
-  ]);
-
-  if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
-  else process.env.SP_LOCAL_REST_URL = oldUrl;
-  global.fetch = oldFetch;
 });
 
 test("task.reorder supports snake aliases, parent context, and validation", async () => {

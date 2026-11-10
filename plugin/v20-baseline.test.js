@@ -187,22 +187,25 @@ test("without Local REST, restore fails in the plugin and nothing is written (#2
   }
 });
 
-test("baseline gap (#16): start writes currentTimestamp instead of startTracking", async () => {
+test("start uses startTracking and writes no currentTimestamp (#16)", async () => {
   const both = await runBoth("task.start", { taskId: "fx-parent" });
   for (const side of [both.modular, both.packaged]) {
     assert.equal(side.ok, true);
-    const methods = writes(side.calls).map((call) => call.method);
-    assert.deepEqual(methods, ["updateTask"]);
-    assert.ok("currentTimestamp" in writes(side.calls)[0].args[1]);
-    // Upstream startTracking on a parent tracks its first unfinished subtask.
-    assert.equal(side.calls.some((call) => call.method === "startTracking"), false);
+    assert.deepEqual(side.result, { started: true, via: "plugin" });
+    // The app tracks the parent's first unfinished subtask itself.
+    assert.deepEqual(writes(side.calls).map((call) => [call.method, ...call.args]), [["startTracking", "fx-parent"]]);
   }
 });
 
-test("baseline gap (#16): current task is read from currentTimestamp, which v20 never sets", async () => {
-  const both = await runBoth("task.current", {});
-  for (const side of [both.modular, both.packaged]) {
-    assert.deepEqual(side.result, { task: null });
+test("stop uses stopTracking; current needs Local REST (#16)", async () => {
+  const stop = await runBoth("task.stop", {});
+  const current = await runBoth("task.current", {});
+  const old = await runBoth("task.start", { taskId: "fx-day-today" }, { startTracking: undefined });
+  for (const side of ["modular", "packaged"]) {
+    assert.deepEqual(writes(stop[side].calls).map((call) => call.method), ["stopTracking"]);
+    assert.equal(current[side].error.code, "UNSUPPORTED_ACTION");
+    assert.equal(old[side].error.code, "UNSUPPORTED_ACTION");
+    assert.deepEqual(writes(old[side].calls), []);
   }
 });
 

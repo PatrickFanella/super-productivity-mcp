@@ -167,7 +167,7 @@ OpenCode example:
 | `SP_MCP_RETRIES` | `3` | Number of retries on transient bridge errors |
 | `SP_MCP_SCOPES` | all scopes | Comma-separated access grant: `read`, `notes`, `create`, `write` (or `all`). See [Access scopes](#access-scopes) |
 | `SP_MCP_MAX_RESPONSE_BYTES` | `0` (no cap) | Refuse tool and resource results larger than this many bytes with `RESPONSE_TOO_LARGE` |
-| `SP_LOCAL_REST_URL` / `SUPER_PRODUCTIVITY_REST_URL` | unset | Super Productivity's Local REST base URL (stock v20: `http://127.0.0.1:3876`). The MCP server calls it directly for archive, restore and recurrence tools |
+| `SP_LOCAL_REST_URL` / `SUPER_PRODUCTIVITY_REST_URL` | unset | Super Productivity's Local REST base URL (stock v20: `http://127.0.0.1:3876`). The MCP server calls it directly for archive, restore, tracking and recurrence tools |
 | `SP_LOCAL_REST_TOKEN` | unset | Bearer token from Settings → Misc → Access Token; stock v20 requires it |
 | `SP_LOCAL_REST_TIMEOUT` | `20s` | Per-request timeout for Local REST calls |
 | `SP_MCP_RECURRENCE_ROUTE` | unset | `plugin` sends recurrence writes to the legacy plugin path (patched app builds only) |

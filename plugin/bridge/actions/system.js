@@ -8,7 +8,47 @@ function requirePluginFunction(name) {
   return PluginAPI[name].bind(PluginAPI);
 }
 
-module.exports = {
+// Habit history: full simple-counter models with per-day values. Stopwatch
+// values are milliseconds; click counters and countdown reminders are counts.
+// Mirrors habitHistory in internal/bridge/habits.go.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function validDay(value) {
+  if (typeof value !== "string" || !DATE_RE.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function habitHistory(counters, payload) {
+  const counterId = payload?.counterId || payload?.counter_id || payload?.id;
+  const startDate = payload?.startDate || payload?.start_date;
+  const endDate = payload?.endDate || payload?.end_date;
+  for (const [name, value] of [["startDate", startDate], ["endDate", endDate]]) {
+    if (value != null && !validDay(value)) throw typedError("INVALID_REQUEST", `${name} must be a valid YYYY-MM-DD date`, false);
+  }
+  if (startDate && endDate && endDate < startDate) throw typedError("INVALID_REQUEST", "endDate must not be before startDate", false);
+  let list = Array.isArray(counters) ? counters : [];
+  if (counterId) {
+    list = list.filter((counter) => counter && counter.id === counterId);
+    if (list.length === 0) throw typedError("SIMPLE_COUNTER_NOT_FOUND", `Simple counter ${counterId} not found`, false);
+  }
+  return list.map((counter) => ({
+    id: counter.id,
+    title: counter.title,
+    type: counter.type,
+    unit: counter.type === "StopWatch" ? "ms" : "count",
+    isEnabled: !!counter.isEnabled,
+    isOn: !!counter.isOn,
+    days: Object.entries(counter.countOnDay || {})
+      .filter(([date]) => (!startDate || date >= startDate) && (!endDate || date <= endDate))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, value]) => ({ date, value: Number(value) })),
+  }));
+}
+
+const exported = {
   "notification.show": async (payload) => {
     const message = payload?.message || "";
     const rawType = String(payload?.type || "info").toUpperCase();
@@ -64,6 +104,16 @@ module.exports = {
     await requirePluginFunction("deleteCounter")(id);
     return { id, deleted: true };
   },
+  "counter.history": async (payload) => {
+    // Without getAllSimpleCounters the MCP server reads Local REST instead.
+    const counters = await requirePluginFunction("getAllSimpleCounters")();
+    return { counters: habitHistory(counters, payload), via: "plugin" };
+  },
+  "counter.setDay": async () => {
+    // The plugin API can set only today's scalar counter value; the MCP
+    // server sets a day through Local REST PUT /simple-counters/:id/value.
+    throw typedError("UNSUPPORTED_ACTION", "Setting a habit's value for a day needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.", false);
+  },
   "bridge.health": async () => ({ ok: true, message: "bridge alive" }),
   "bridge.checkConnection": async () => ({ ok: true, message: "bridge alive" }),
   "bridge.status": async () => ({
@@ -83,3 +133,7 @@ module.exports = {
     throw typedError("UNSUPPORTED_ACTION", "Reading focus state needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN)", false);
   },
 };
+
+Object.defineProperty(exported, "habitHistory", { value: habitHistory, enumerable: false });
+
+module.exports = exported;

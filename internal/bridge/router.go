@@ -43,7 +43,8 @@ var restRoutes = map[string]route{
 	"task.stop":    {rest: stopTask},
 	"task.current": {rest: currentTask},
 
-	"focus.state": {rest: focusState, needsREST: true},
+	"focus.state":    {rest: focusState, needsREST: true},
+	"counter.setDay": {rest: setHabitDay, needsREST: true},
 
 	"task.addTime":       {rest: addTime, needsREST: true, needsDay: true},
 	"task.setTimeForDay": {rest: setTimeForDay, needsREST: true, needsDay: true},
@@ -122,6 +123,9 @@ func (r *Router) Call(ctx context.Context, req domain.Request) (domain.Response,
 			}
 		}
 		return r.createWithRepeat(ctx, req)
+	}
+	if req.Action == "counter.history" {
+		return r.habitHistory(ctx, req)
 	}
 	// A deadline edit goes, whole, through the app's deadline-aware REST path.
 	if req.Action == "task.update" && hasDeadline(req.Payload) {

@@ -1,0 +1,44 @@
+{
+  "meta": {
+    "upstream": {
+      "version": "20.0.0",
+      "commit": "4db0e11236bc784d3184a9e252930b4bd53df823"
+    }
+  },
+  "simpleCounters": [
+    {
+      "id": "fx-counter-water",
+      "title": "Fixture water glasses",
+      "type": "ClickCounter",
+      "isEnabled": true,
+      "isOn": false,
+      "countOnDay": {
+        "2026-11-07": 6,
+        "2026-11-08": 8,
+        "2026-11-09": 2
+      }
+    },
+    {
+      "id": "fx-counter-reading",
+      "title": "Fixture reading stopwatch",
+      "type": "StopWatch",
+      "isEnabled": true,
+      "isOn": false,
+      "countOnDay": {
+        "2026-11-08": 1500000,
+        "2026-11-09": 600000
+      }
+    },
+    {
+      "id": "fx-counter-stretch",
+      "title": "Fixture stretch reminder",
+      "type": "RepeatedCountdownReminder",
+      "isEnabled": false,
+      "isOn": false,
+      "countOnDay": {}
+    }
+  ],
+  "pluginCounters": {
+    "fixture-plugin-counter": 3
+  }
+}

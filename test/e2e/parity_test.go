@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,6 +70,65 @@ func TestBridgeRoundTripWithFixtureResponse(t *testing.T) {
 }
 
 func TestBridgeRoundTripWithRealJSBridge(t *testing.T) {
+	client := startJSBridge(t, "")
+
+	resp, err := client.Call(context.Background(), domain.Request{Action: "task.list", Payload: map[string]any{"includeDone": false}})
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	tasks, ok := resp.Result["tasks"].([]any)
+	if !ok || len(tasks) != 1 {
+		t.Fatalf("expected one task, got %#v", resp.Result)
+	}
+	task := tasks[0].(map[string]any)
+	if task["id"] != "fixture-task" {
+		t.Fatalf("unexpected task %#v", task)
+	}
+}
+
+// TestBridgeListsWholeV20Inventory keeps the suite's inventory reads complete:
+// the synthetic v20 fixture holds more tasks than the native MCP returns.
+func TestBridgeListsWholeV20Inventory(t *testing.T) {
+	fixture := readV20Tasks(t)
+	if len(fixture.Active) <= 100 {
+		t.Fatalf("fixture must hold more than 100 active tasks, has %d", len(fixture.Active))
+	}
+	client := startJSBridge(t, "v20")
+
+	resp, err := client.Call(context.Background(), domain.Request{Action: "task.list", Payload: map[string]any{}})
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	tasks, ok := resp.Result["tasks"].([]any)
+	if !ok || len(tasks) != len(fixture.Active) {
+		t.Fatalf("expected %d tasks, got %d", len(fixture.Active), len(tasks))
+	}
+	if truncated, _ := resp.Result["truncated"].(bool); truncated {
+		t.Fatalf("full inventory reported as truncated")
+	}
+}
+
+type v20Tasks struct {
+	Active []map[string]any `json:"active"`
+}
+
+func readV20Tasks(t *testing.T) v20Tasks {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "fixtures", "upstream", "v20", "tasks.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var out v20Tasks
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	return out
+}
+
+// startJSBridge runs the modular JS bridge against a fixture PluginAPI and
+// returns a Go IPC client connected to it. fixture "" is the one-task fixture.
+func startJSBridge(t *testing.T, fixture string) *pluginipc.Client {
+	t.Helper()
 	tmp := t.TempDir()
 	cfg := config.Config{
 		InboxDir:     filepath.Join(tmp, "inbox"),
@@ -91,6 +151,7 @@ func TestBridgeRoundTripWithRealJSBridge(t *testing.T) {
 		"SP_MCP_DATA_DIR="+tmp,
 		"SP_MCP_POLL_INTERVAL_MS=20",
 		"SP_MCP_FIXTURE_READY="+readyPath,
+		"SP_MCP_FIXTURE="+fixture,
 	)
 	var output bytes.Buffer
 	cmd.Stdout = &output
@@ -103,19 +164,7 @@ func TestBridgeRoundTripWithRealJSBridge(t *testing.T) {
 		_ = cmd.Wait()
 	})
 	waitForFile(t, readyPath)
-
-	resp, err := client.Call(context.Background(), domain.Request{Action: "task.list", Payload: map[string]any{"includeDone": false}})
-	if err != nil {
-		t.Fatalf("call: %v", err)
-	}
-	tasks, ok := resp.Result["tasks"].([]any)
-	if !ok || len(tasks) != 1 {
-		t.Fatalf("expected one task, got %#v", resp.Result)
-	}
-	task := tasks[0].(map[string]any)
-	if task["id"] != "fixture-task" {
-		t.Fatalf("unexpected task %#v", task)
-	}
+	return client
 }
 
 func waitForFile(t *testing.T, path string) {

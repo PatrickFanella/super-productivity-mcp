@@ -48,6 +48,8 @@ is not rewritten; stock v20 answers it with "connection refused" or
 |------|-------|--------------|--------------|
 | `archive_task` | `POST /tasks/:id/archive` | Go server | Errors with `UNSUPPORTED_ACTION` unless `allowDoneFallback:true`, which marks the task done instead of archiving it. |
 | `restore_task` | `POST /tasks/:id/restore` | Go server | `UNSUPPORTED_ACTION`; no fallback. |
+| `get_task_recurrences` | `GET /task-repeat-cfgs` | Go server | Plugin reads `PluginAPI.getAppState()`. |
+| `get_task_recurrence` | `GET /tasks/:id`, then `GET /task-repeat-cfgs/:id` | Go server | Plugin reads `PluginAPI.getAppState()`. |
 | `start_task` | `POST /tasks/:id/start` | Modular plugin only | Plugin writes `currentTimestamp`. |
 | `stop_task` | `POST /task-control/stop` | Modular plugin only | Plugin clears `currentTimestamp`. |
 | `get_current_task` | `GET /task-control/current` | Modular plugin only | Plugin scans tasks for `currentTimestamp`. |
@@ -55,6 +57,10 @@ is not rewritten; stock v20 answers it with "connection refused" or
 "Modular plugin only" rows read `SP_LOCAL_REST_URL` from the plugin's own
 process, which the installed packaged plugin does not do. Roadmap issue #16
 moves them to the Go server.
+
+Recurrence reads include paused configs. Their `writableFields` result names
+the fields a schedule edit can change on each adapter; on stock v20 the plugin
+cannot write repeat configs at all.
 
 Only a top-level task can be archived; its subtasks go with it. Archiving a
 subtask returns `INVALID_REQUEST`. Restoring a task that is not in the archive

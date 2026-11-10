@@ -325,3 +325,41 @@ test("the fake PluginAPI models an older host by removing methods", async () => 
   assert.equal(typeof api.startTracking, "undefined");
   assert.equal(typeof api.getTasks, "function");
 });
+
+const repeatFixture = loadFixture("repeat-cfgs.json");
+
+test("recurrences are listed from the plugin's app state, paused ones included (#22)", async () => {
+  const all = await runBoth("task.listRecurrences", {});
+  const projected = await runBoth("task.listRecurrences", { project_id: "fixture-project-alpha", fields: ["isPaused"] });
+  for (const side of ["modular", "packaged"]) {
+    assert.equal(all[side].ok, true);
+    assert.deepEqual(all[side].result.repeatCfgs.map((cfg) => cfg.id).sort(), repeatFixture.repeatCfgs.map((cfg) => cfg.id).sort());
+    assert.ok(all[side].result.repeatCfgs.some((cfg) => cfg.isPaused));
+    assert.equal(all[side].result.via, "plugin");
+    assert.deepEqual(all[side].result.writableFields, { localRest: repeatFixture.restWritableFields, plugin: [] });
+    assert.deepEqual(projected[side].result.repeatCfgs.find((cfg) => cfg.id === "fx-repeat-paused"), { id: "fx-repeat-paused", isPaused: true });
+    // No writes: reading never dispatches.
+    assert.deepEqual(writes(all[side].calls), []);
+  }
+  assert.deepEqual(all.modular.result, all.packaged.result);
+});
+
+test("a recurrence is resolved from a fresh task read (#22)", async () => {
+  const byTask = await runBoth("task.getRecurrence", { taskId: "fx-recurring", fields: ["repeatEvery", "tuesday"] });
+  const notRecurring = await runBoth("task.getRecurrence", { taskId: "fx-day-today" });
+  const unknown = await runBoth("task.getRecurrence", { repeatCfgId: "fx-missing" });
+  const missingArg = await runBoth("task.getRecurrence", {});
+  for (const side of ["modular", "packaged"]) {
+    assert.deepEqual(byTask[side].result.repeatCfg, { id: "fx-repeat-weekly-custom", repeatEvery: 2, tuesday: true });
+    assert.equal(byTask[side].result.taskId, "fx-recurring");
+    assert.equal(notRecurring[side].error.code, "TASK_NOT_RECURRING");
+    assert.equal(unknown[side].error.code, "REPEAT_CFG_NOT_FOUND");
+    assert.equal(missingArg[side].error.code, "INVALID_REQUEST");
+  }
+});
+
+test("recurrence reads report a runtime without getAppState as unsupported (#22)", async () => {
+  const both = await runBoth("task.listRecurrences", {}, { getAppState: undefined });
+  assertSameOutcome(both);
+  assert.equal(both.modular.error.code, "UNSUPPORTED_ACTION");
+});

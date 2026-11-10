@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -343,5 +344,17 @@ func TestCancelAfterSendIsUncertainForMutations(t *testing.T) {
 	_, err := newClient(t, srv.URL).Do(ctx, Request{Method: http.MethodPost, Path: "/tasks/x/archive", Mutation: true})
 	if te := typed(t, err); te.Code != CodeOutcomeUnknown {
 		t.Fatalf("code = %s", te.Code)
+	}
+}
+
+func TestDoEncodesQuery(t *testing.T) {
+	var seen []*http.Request
+	srv := serve(t, loadEnvelopes(t)["health"], &seen)
+	_, err := newClient(t, srv.URL).Do(context.Background(), Request{Method: http.MethodGet, Path: "/task-repeat-cfgs", Query: url.Values{"projectId": {"a b&c"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seen[0].URL.Query().Get("projectId"); got != "a b&c" {
+		t.Fatalf("projectId = %q", got)
 	}
 }

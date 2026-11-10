@@ -165,6 +165,8 @@ type Request struct {
 	Method string
 	// Path starts with "/"; callers escape path segments.
 	Path string
+	// Query is encoded onto the URL when non-empty.
+	Query url.Values
 	// Body is encoded as JSON when non-nil.
 	Body any
 	// Mutation marks a request that changes data. A failure after the
@@ -195,7 +197,11 @@ func (c *Client) Do(ctx context.Context, req Request) (json.RawMessage, error) {
 		}
 		body = bytes.NewReader(b)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, req.Method, c.base.String()+req.Path, body)
+	target := c.base.String() + req.Path
+	if len(req.Query) > 0 {
+		target += "?" + req.Query.Encode()
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, target, body)
 	if err != nil {
 		return nil, domain.TypedError{Code: CodeInvalidRequest, Message: "invalid Local REST request"}
 	}

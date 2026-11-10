@@ -26,6 +26,9 @@ type restRoute func(ctx context.Context, rest *localrest.Client, payload map[str
 var restRoutes = map[string]restRoute{
 	"task.archive": archiveTask,
 	"task.restore": restoreTask,
+
+	"task.listRecurrences": listRecurrences,
+	"task.getRecurrence":   getRecurrence,
 }
 
 // Router implements domain.Bridge over Local REST and plugin IPC.

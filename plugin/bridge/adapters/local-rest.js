@@ -27,13 +27,6 @@ async function request(config, path, options = {}) {
   return parseResponse(response);
 }
 
-async function archiveTask(taskId) {
-  const config = localRestConfig();
-  if (!config) return false;
-  await request(config, `/tasks/${encodeURIComponent(taskId)}/archive`, { method: "POST", errorCode: "LOCAL_REST_ARCHIVE_FAILED" });
-  return true;
-}
-
 async function restoreTask(taskId) {
   const config = localRestConfig();
   if (!config) throw typedError("UNSUPPORTED_ACTION", "Restore requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL", false);
@@ -88,7 +81,6 @@ async function safeResponseText(response) {
 }
 
 module.exports = {
-  archiveTask,
   getCurrentTask,
   localRestConfig,
   request,

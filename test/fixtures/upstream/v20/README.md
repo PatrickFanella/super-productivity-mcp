@@ -79,7 +79,7 @@ from v20, not a regression; the issue that fixes it updates the test.
 | --- | --- | --- | --- |
 | Today | `tagId: "TODAY"` matches the stored tag ID: 2 legacy tasks. | Date-based: 5 tasks on the logical day. | #20 |
 | Schedule reads | Range and health read `plannedAt` only; timed v20 tasks look unscheduled. | Tasks carry `dueWithTime` or `dueDay`. | #19 |
-| Archive | Fails with `UNSUPPORTED_ACTION` without REST; the packaged plugin always fails. | `POST /tasks/:id/archive`. | #15 |
+| Archive | Fixed in #15: the Go server calls `POST /tasks/:id/archive` when Local REST is configured. Without REST both plugin projections fail with `UNSUPPORTED_ACTION`. | `POST /tasks/:id/archive`. | #15 |
 | Restore | Fails with `UNSUPPORTED_ACTION`. | `POST /tasks/:id/restore`. | #25 |
 | Tracking | Start writes `currentTimestamp`; current task reads it. | `startTracking` / `POST /task-control/current`. | #16 |
 | Recurrence | Set, update and delete dispatch actions stock v20 refuses. | `/task-repeat-cfgs`. | #22, #23 |

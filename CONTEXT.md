@@ -13,11 +13,18 @@ installable artifacts.
   names MCP tools/resources, plugin bridge actions, schemas, output schemas,
   protocol version, and stable resource payloads.
 - **Plugin bridge** — the Super Productivity plugin runtime that consumes file
-  IPC requests and executes catalog actions against `PluginAPI` or supported
-  local adapters.
+  IPC requests and executes catalog actions against `PluginAPI`. Actions the
+  router sends to Local REST never reach it.
 - **IPC lifecycle** — one request from inbox write through processing, outbox,
   deadletter, timeout, stall, cancellation, cleanup, and emitted lifecycle
   events.
+- **Local REST adapter** — `internal/localrest`, the Go client for Super
+  Productivity's Local REST API (stock v20: `http://127.0.0.1:3876`, Bearer
+  token). It is used only for actions the router maps to it.
+- **Router** — `internal/bridge`, the `domain.Bridge` both entrypoints build.
+  It picks Local REST or plugin IPC for each action before sending, and never
+  retries a failed call through the other adapter. See
+  [ADR 0003](docs/adr/0003-local-rest-routing.md).
 - **MCP adapter** — the JSON-RPC/MCP layer that exposes catalog tools/resources
   and dispatches validated calls to the bridge.
 - **Quick-add workflow** — the user-facing shortcut flow: collect a title through
@@ -43,9 +50,10 @@ installable artifacts.
   aligned with the catalog protocol version.
 - Installer docs, evals, skill docs, and generated docs should reference or
   derive from contract owners instead of repeating normative lists.
-- The Go **Bridge** Interface is deliberately narrow. It is useful as the MCP
-  adapter test surface and plugin IPC adapter seam, but it should not grow until
-  there is a second production Adapter or more bridge behavior to hide.
+- The Go **Bridge** Interface is deliberately narrow. It has two production
+  adapters, plugin IPC and Local REST, chosen per action by the router in
+  `internal/bridge`. Keep it `Call(ctx, req)`; put routing rules in the router,
+  not in the interface.
 - The quick-add workflow owns title resolution, Walker prompting,
   bridge task creation, and user notifications behind `internal/quickadd`.
   `cmd/sp-quick-add` should stay a composition root for flags and runtime

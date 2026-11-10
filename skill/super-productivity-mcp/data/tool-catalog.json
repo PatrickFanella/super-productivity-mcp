@@ -409,7 +409,7 @@
     {
       "mcpName": "archive_task",
       "action": "task.archive",
-      "description": "True-archive a task via optional Local REST. Requires SP_LOCAL_REST_URL/SUPER_PRODUCTIVITY_REST_URL; without REST this errors unless allowDoneFallback:true explicitly accepts marking the task done instead.",
+      "description": "True-archive a top-level task (its subtasks go with it) through Super Productivity's Local REST API, which the MCP server calls directly. Needs SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN. Without REST this errors unless allowDoneFallback:true explicitly accepts marking the task done instead; a failed REST archive is never retried that way.",
       "title": "Archive task",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },

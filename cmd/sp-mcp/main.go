@@ -4,11 +4,11 @@ import (
 	"context"
 	"os"
 
+	"github.com/PatrickFanella/super-productivity-mcp/internal/bridge"
 	"github.com/PatrickFanella/super-productivity-mcp/internal/catalog"
 	"github.com/PatrickFanella/super-productivity-mcp/internal/config"
 	"github.com/PatrickFanella/super-productivity-mcp/internal/logging"
 	"github.com/PatrickFanella/super-productivity-mcp/internal/mcpadapter"
-	"github.com/PatrickFanella/super-productivity-mcp/internal/pluginipc"
 )
 
 func main() {
@@ -21,15 +21,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	bridge, err := pluginipc.NewClient(cfg)
-	if err != nil {
-		logger.Error("failed to init bridge", "error", err)
-		os.Exit(1)
+	router := bridge.New(cfg)
+	if err := router.RESTError(); err != nil {
+		// Archive and other REST-mapped tools report this error; nothing falls
+		// back to plugin IPC, because the user asked for REST.
+		logger.Warn("Local REST settings are unusable", "error", err)
 	}
 	if len(cfg.InvalidScopes) > 0 {
 		logger.Warn("ignoring unknown SP_MCP_SCOPES entries", "invalid", cfg.InvalidScopes, "granted", cfg.Scopes)
 	}
-	server := mcpadapter.NewWithOptions(logger, bridge, cat, mcpadapter.Options{
+	server := mcpadapter.NewWithOptions(logger, router, cat, mcpadapter.Options{
 		Scopes:           cfg.Scopes,
 		MaxResponseBytes: cfg.MaxResponseBytes,
 	})

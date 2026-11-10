@@ -6,6 +6,9 @@
 // behavior that differs from upstream v20; the roadmap issue named in it
 // changes the behavior and updates the assertion. These are not failing
 // tests: they pass on the current suite.
+//
+// True archive (#15) is delivered by the Go server over Local REST
+// (internal/bridge), so the plugin cases below only cover the no-REST path.
 process.env.TZ = "America/Chicago";
 
 const test = require("node:test");
@@ -103,7 +106,7 @@ test("baseline gap (#19): schedule health counts planned work by plannedAt only"
   }
 });
 
-test("baseline gap (#15): true archive is unavailable without REST and nothing is written", async () => {
+test("without Local REST, true archive fails in the plugin and nothing is written", async () => {
   const both = await runBoth("task.archive", { taskId: "fx-day-overdue" });
   assertSameOutcome(both);
   for (const side of [both.modular, both.packaged]) {

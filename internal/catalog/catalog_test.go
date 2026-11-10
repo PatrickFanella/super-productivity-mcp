@@ -15,9 +15,16 @@ func TestLoadCatalog(t *testing.T) {
 	if c.ProtocolVersion != domain.ProtocolVersion {
 		t.Fatalf("protocolVersion %q != domain.ProtocolVersion %q", c.ProtocolVersion, domain.ProtocolVersion)
 	}
-	if len(c.MCPTools()) != len(c.Tools) {
-		// All tools currently MCP-exposed; fail loud if that changes silently.
-		t.Fatalf("expected every tool to be MCP-exposed, got %d/%d", len(c.MCPTools()), len(c.Tools))
+	// Every tool is MCP-exposed except the deliberate internal actions; fail
+	// loud if that changes silently.
+	internal := map[string]bool{"task.dayContext": true}
+	for _, tool := range c.Tools {
+		if (tool.MCPName == "" || tool.Internal) != internal[tool.Action] {
+			t.Fatalf("tool %q: internal=%v, want %v", tool.Action, tool.MCPName == "" || tool.Internal, internal[tool.Action])
+		}
+	}
+	if len(c.MCPTools()) != len(c.Tools)-len(internal) {
+		t.Fatalf("MCP tools %d, want %d", len(c.MCPTools()), len(c.Tools)-len(internal))
 	}
 	if len(c.MCPResources()) == 0 {
 		t.Fatalf("expected MCP resources to be catalog-driven")

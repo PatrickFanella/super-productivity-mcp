@@ -117,23 +117,49 @@ function localDateStr(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+// isLocalDateString accepts a real calendar date in YYYY-MM-DD form, so
+// "2026-02-30" is refused rather than rolled over to March.
 function isLocalDateString(value) {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+// dayRangeMs is the local calendar day as [start, next day's start). It uses
+// calendar arithmetic, so DST days are 23 or 25 hours long.
 function dayRangeMs(dateStr) {
   const [year, month, day] = dateStr.split("-").map(Number);
-  const start = new Date(year, month - 1, day).getTime();
-  return [start, start + 86400000];
+  return [new Date(year, month - 1, day).getTime(), new Date(year, month - 1, day + 1).getTime()];
+}
+
+// appTodayDay is the day the app files a task under for Today
+// (isTaskInToday in the v20 REST routes): dueWithTime shifted by the day-start
+// offset, else dueDay. It ignores legacy plannedAt, which v20 does not store.
+function appTodayDay(task, startOfNextDayDiffMs) {
+  const dueWithTime = validTimestamp(task.dueWithTime);
+  if (dueWithTime != null) return localDateStr(new Date(dueWithTime - (Number(startOfNextDayDiffMs) || 0)));
+  return isLocalDateString(task.dueDay) ? task.dueDay : null;
+}
+
+// scheduleDayIn returns the day a normalized schedule falls on when days start
+// startOfNextDayDiffMs after midnight (the app's logical day). With 0 it is
+// the calendar day.
+function scheduleDayIn(schedule, startOfNextDayDiffMs) {
+  if (schedule.kind !== "timed") return schedule.day;
+  return localDateStr(new Date(schedule.at - (Number(startOfNextDayDiffMs) || 0)));
 }
 
 module.exports = {
+  appTodayDay,
   compactTaskSummary,
   dayRangeMs,
   hasSuspiciousDatesOrEstimates,
   isLocalDateString,
   localDateStr,
   pickFields,
+  scheduleDayIn,
   scheduleFields,
   sortAndPageTasks,
   taskSchedule,

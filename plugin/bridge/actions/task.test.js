@@ -744,7 +744,8 @@ test("task.makePlannedAt converts local date and time", async () => {
   const out = await taskActions["task.makePlannedAt"]({ date: "2026-05-14", time: "09:30", timezone: "local" });
 
   assert.equal(out.plannedAt, new Date(2026, 4, 14, 9, 30).getTime());
-  assert.equal(out.timezone, "local");
+  // "local" resolves to the host's named zone.
+  assert.equal(out.timezone, Intl.DateTimeFormat().resolvedOptions().timeZone);
   assert.match(out.iso, /^2026-/);
 });
 

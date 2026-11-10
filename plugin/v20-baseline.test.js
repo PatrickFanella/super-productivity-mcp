@@ -22,25 +22,6 @@ const { createPluginApi, loadFixture, runBoth, writes } = require(path.join(fixt
 
 const tasksFixture = loadFixture("tasks.json");
 
-// Upstream isTaskInToday (local-rest-api-task-routes.service.ts): a timed task
-// is in Today when its time, shifted by the day-start offset, falls on the
-// logical day; a day-only task when its dueDay is the logical day.
-function upstreamTodayIds(tasks, { todayStr, startOfNextDayDiffMs }) {
-  const localDate = (ms) => {
-    const d = new Date(ms - startOfNextDayDiffMs);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  };
-  return tasks
-    .filter((task) => !task.isDone)
-    .filter((task) => (Number.isFinite(task.dueWithTime) && task.dueWithTime > 0 ? localDate(task.dueWithTime) === todayStr : task.dueDay === todayStr))
-    .map((task) => task.id)
-    .sort();
-}
-
-function ids(result) {
-  return result.result.tasks.map((task) => task.id).sort();
-}
-
 function assertSameOutcome(both) {
   assert.equal(both.modular.ok, both.packaged.ok, "modular and packaged disagree on success");
   if (!both.modular.ok) assert.equal(both.modular.error.code, both.packaged.error.code);
@@ -75,16 +56,6 @@ test("task.list returns the whole inventory in both projections", async () => {
     assert.equal(side.result.tasks.length, tasksFixture.active.length);
     assert.equal(side.result.truncated, false);
   }
-});
-
-test("baseline gap (#20): tagId TODAY matches stored tag ids, not the logical day", async () => {
-  const both = await runBoth("task.list", { tagId: "TODAY", includeDone: false });
-  const stored = ["fx-legacy-planned", "fx-legacy-stale-today-tag"];
-  assert.deepEqual(ids(both.modular), stored);
-  assert.deepEqual(ids(both.packaged), stored);
-  const upstream = upstreamTodayIds(tasksFixture.active, tasksFixture.dayContext);
-  assert.deepEqual(upstream, ["fx-day-today", "fx-mixed-legacy", "fx-timed-before-day-start", "fx-timed-today", "fx-timed-with-due-day"]);
-  assert.notDeepEqual(ids(both.modular), upstream);
 });
 
 function dayIds(side) {

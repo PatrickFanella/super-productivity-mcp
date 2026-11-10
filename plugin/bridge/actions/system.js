@@ -77,4 +77,9 @@ module.exports = {
     pluginVersion: "0.1.0",
     protocolVersion: catalog.protocolVersion,
   }),
+  // Focus state is read by the MCP server from Local REST GET /focus; the
+  // plugin API has no focus read.
+  "focus.state": async () => {
+    throw typedError("UNSUPPORTED_ACTION", "Reading focus state needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN)", false);
+  },
 };

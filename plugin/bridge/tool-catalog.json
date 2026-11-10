@@ -1459,6 +1459,38 @@
       }
     },
     {
+      "mcpName": "get_focus_state",
+      "action": "focus.state",
+      "description": "Read the app's Focus Mode state from Local REST GET /focus: mode (Pomodoro, Flowtime or Countdown), the 1-based Pomodoro cycle, isSessionDone, and timer (null, or purpose work/break, status running/paused/done, isOvertime, isLongBreak, elapsedMs, remainingMs, durationMs; Flowtime has no countdown, so remainingMs is 0). state summarizes it: inactive, session-done, or purpose-status such as work-running. Read-only: there are no focus controls. Needs Local REST. The cycle resets when the app restarts.",
+      "title": "Get focus state",
+      "scope": "read",
+      "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["Flowtime", "Pomodoro", "Countdown"] },
+          "cycle": { "type": "number" },
+          "isSessionDone": { "type": "boolean" },
+          "timer": {
+            "type": ["object", "null"],
+            "properties": {
+              "purpose": { "type": "string", "enum": ["work", "break"] },
+              "status": { "type": "string", "enum": ["running", "paused", "done"] },
+              "isOvertime": { "type": "boolean" },
+              "isLongBreak": { "type": "boolean" },
+              "elapsedMs": { "type": "number" },
+              "remainingMs": { "type": "number" },
+              "durationMs": { "type": "number" }
+            }
+          },
+          "state": { "type": "string" },
+          "via": { "type": "string" }
+        },
+        "required": ["mode", "timer", "isSessionDone", "state"]
+      }
+    },
+    {
       "action": "task.dayContext",
       "internal": true,
       "description": "Internal: the app's logical day ({todayStr, startOfNextDayDiffMs, source}). source is \"host-clock\" on hosts without PluginAPI.getDayContext.",

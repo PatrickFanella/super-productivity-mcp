@@ -12,6 +12,8 @@ Treat planning as a controlled transaction over live personal task data.
 - Read `references/planning-runbook.md` before broad or mutating work.
 - Read `references/verification-checklist.md` before reporting a full overhaul
   or any guarantee such as “nothing remains unscheduled.”
+- Read `references/workflow-patterns.md` when the user asks for a handoff,
+  technical spike, work log, Waiting For list, daily review or shutdown.
 
 ## Gates
 

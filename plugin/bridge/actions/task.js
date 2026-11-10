@@ -45,4 +45,5 @@ module.exports = {
   "task.removeTag": organize.taskRemoveTag,
   "task.moveToProject": organize.taskMoveToProject,
   "task.worklog": mutate.taskWorklog,
+  "task.dayContext": read.taskDayContext,
 };

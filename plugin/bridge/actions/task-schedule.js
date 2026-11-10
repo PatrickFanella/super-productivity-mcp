@@ -1,6 +1,6 @@
 const { typedError } = require("../errors");
-const { dayRangeMs, findTask, getTasksBySource, isLocalDateString, localDateStr, valueOf } = require("./task-common");
-const { compactTaskSummary, hasSuspiciousDatesOrEstimates, taskSchedule } = require("./task-shape");
+const { dayRangeMs, findTask, getDayContext, getTasksBySource, isLocalDateString, localDateStr, valueOf } = require("./task-common");
+const { compactTaskSummary, hasSuspiciousDatesOrEstimates, scheduleDayIn, taskSchedule } = require("./task-shape");
 const { taskBulkUpdateCore } = require("./task-mutate");
 
 async function taskClearScheduleForDay(payload) {
@@ -25,18 +25,31 @@ async function taskClearScheduleForDay(payload) {
   return { ...out, date, changedCount: out.results.filter((result) => result.success).length };
 }
 
+// hostTimeZone names the zone calendar dates are read in.
+function hostTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+}
+
 async function taskScheduleHealth(payload) {
   payload = payload || {};
-  const date = payload.date || localDateStr(new Date());
-  if (!isLocalDateString(date)) throw typedError("INVALID_REQUEST", "date must be YYYY-MM-DD", false);
+  // Without a date, the report is for the app's logical Today: a timed task
+  // counts on the day it falls on after the day-start offset. An explicit
+  // date is a calendar day in the host time zone.
+  const day = payload.date == null ? await getDayContext() : null;
+  const date = day ? day.todayStr : payload.date;
+  const offset = day ? day.startOfNextDayDiffMs : 0;
+  if (!isLocalDateString(date)) throw typedError("INVALID_REQUEST", "date must be a valid YYYY-MM-DD date", false);
   const staleBeforeDate = valueOf(payload, "staleBeforeDate", "stale_before_date") || date;
-  if (!isLocalDateString(staleBeforeDate)) throw typedError("INVALID_REQUEST", "staleBeforeDate must be YYYY-MM-DD", false);
+  if (!isLocalDateString(staleBeforeDate)) throw typedError("INVALID_REQUEST", "staleBeforeDate must be a valid YYYY-MM-DD date", false);
   const includeDone = valueOf(payload, "includeDone", "include_done") === true;
   const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
   const oversizedNotesThreshold = Number(valueOf(payload, "oversizedNotesThreshold", "oversized_notes_threshold") ?? 4000);
   const tasks = (await getTasksBySource(includeArchived ? "all" : "active"))
     .filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived));
-  const scheduled = tasks.map((task) => ({ task, schedule: taskSchedule(task) }));
+  const scheduled = tasks.map((task) => {
+    const schedule = taskSchedule(task);
+    return { task, schedule: { ...schedule, day: scheduleDayIn(schedule, offset) } };
+  });
   const where = (test) => scheduled.filter(({ task, schedule }) => test(schedule, task)).map(({ task }) => task);
 
   const lists = {
@@ -54,17 +67,20 @@ async function taskScheduleHealth(payload) {
   };
   const compactLists = Object.fromEntries(Object.entries(lists).map(([key, value]) => [key, value.map(compactTaskSummary)]));
   const counts = Object.fromEntries(Object.entries(compactLists).map(([key, value]) => [key, value.length]));
-  return { date, staleBeforeDate, counts, tasks: compactLists };
+  const basis = day ? { dayBasis: "logical", dayContext: day } : { dayBasis: "calendar" };
+  return { date, staleBeforeDate, ...basis, timeZone: hostTimeZone(), counts, tasks: compactLists };
 }
 
 async function taskScheduleRange(payload) {
   payload = payload || {};
   const startDate = valueOf(payload, "startDate", "start_date");
   const endDate = valueOf(payload, "endDate", "end_date") || startDate;
-  if (!isLocalDateString(startDate)) throw typedError("INVALID_REQUEST", "startDate must be YYYY-MM-DD", false);
-  if (!isLocalDateString(endDate)) throw typedError("INVALID_REQUEST", "endDate must be YYYY-MM-DD", false);
+  if (!isLocalDateString(startDate)) throw typedError("INVALID_REQUEST", "startDate must be a valid YYYY-MM-DD date", false);
+  if (!isLocalDateString(endDate)) throw typedError("INVALID_REQUEST", "endDate must be a valid YYYY-MM-DD date", false);
+  if (endDate < startDate) throw typedError("INVALID_REQUEST", "endDate must not be before startDate", false);
   const includeDone = valueOf(payload, "includeDone", "include_done") === true;
   const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
+  // An explicit range is calendar days in the host time zone, not logical days.
   const entries = (await getTasksBySource(includeArchived ? "all" : "active"))
     .filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived))
     .map((task) => ({ task, schedule: taskSchedule(task) }))
@@ -75,7 +91,7 @@ async function taskScheduleRange(payload) {
   for (const { task, schedule } of entries) {
     if (byDate.has(schedule.day)) byDate.get(schedule.day).push(compactTaskSummary(task));
   }
-  return { startDate, endDate, days: [...byDate.entries()].map(([date, dayTasks]) => ({ date, tasks: dayTasks })) };
+  return { startDate, endDate, dayBasis: "calendar", timeZone: hostTimeZone(), days: [...byDate.entries()].map(([date, dayTasks]) => ({ date, tasks: dayTasks })) };
 }
 
 function compareScheduled(a, b) {
@@ -130,11 +146,13 @@ async function taskMakePlannedAt(payload) {
   payload = payload || {};
   const date = payload.date;
   const time = payload.time || "09:00";
-  const timezone = payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
-  if (!isLocalDateString(date)) throw typedError("INVALID_REQUEST", "date must be YYYY-MM-DD", false);
-  if (!/^\d{1,2}:\d{2}$/.test(time)) throw typedError("INVALID_REQUEST", "time must be HH:MM", false);
-  const plannedAt = zonedWallTimeToMs(date, time, timezone);
-  return { plannedAt, iso: new Date(plannedAt).toISOString(), timezone };
+  const timezone = payload.timezone && payload.timezone !== "local" ? payload.timezone : hostTimeZone();
+  if (!isLocalDateString(date)) throw typedError("INVALID_REQUEST", "date must be a valid YYYY-MM-DD date", false);
+  if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(time)) throw typedError("INVALID_REQUEST", "time must be HH:MM from 00:00 to 23:59", false);
+  const resolved = resolveZonedWallTime(date, time, timezone, payload.disambiguation);
+  const out = { plannedAt: resolved.ms, iso: new Date(resolved.ms).toISOString(), timezone };
+  if (resolved.ambiguous) out.ambiguous = resolved.ambiguous;
+  return out;
 }
 
 async function taskAutoSchedule(payload) {
@@ -224,6 +242,43 @@ function zonedWallTimeToMs(dateStr, timeStr, timezone) {
     guess += delta;
   }
   return guess;
+}
+
+// zonedOffsetMs is the zone's UTC offset at instant ms, to the minute.
+function zonedOffsetMs(ms, timezone) {
+  const p = zonedDateParts(new Date(ms), timezone);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(ms / 60000) * 60000;
+}
+
+// resolveZonedWallTime finds the instant a wall-clock time names in a zone.
+// A time skipped by a spring-forward change does not exist and is refused.
+// A time repeated by a fall-back change is ambiguous: disambiguation
+// "earlier" or "later" picks one; without it the request is refused.
+function resolveZonedWallTime(dateStr, timeStr, timezone, disambiguation) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, minute] = timeStr.split(":").map(Number);
+  const wall = Date.UTC(year, month - 1, day, hour, minute);
+  let candidates;
+  try {
+    const offsets = new Set([-86400000, 0, 86400000].map((shift) => zonedOffsetMs(wall + shift, timezone)));
+    candidates = [...new Set([...offsets].map((offset) => wall - offset))]
+      .filter((ms) => {
+        const p = zonedDateParts(new Date(ms), timezone);
+        return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) === wall;
+      })
+      .sort((a, b) => a - b);
+  } catch (_err) {
+    throw typedError("INVALID_REQUEST", `timezone ${timezone} is not a known IANA time zone`, false);
+  }
+  if (candidates.length === 0) {
+    throw typedError("INVALID_REQUEST", `${dateStr} ${timeStr} does not exist in ${timezone}: the clocks skip it`, false, { date: dateStr, time: timeStr, timezone });
+  }
+  if (candidates.length === 1) return { ms: candidates[0], ambiguous: null };
+  const [earlier, later] = [candidates[0], candidates[candidates.length - 1]];
+  if (disambiguation === "earlier" || disambiguation === "later") {
+    return { ms: disambiguation === "earlier" ? earlier : later, ambiguous: { earlier, later, chosen: disambiguation } };
+  }
+  throw typedError("INVALID_REQUEST", `${dateStr} ${timeStr} happens twice in ${timezone}; pass disambiguation "earlier" or "later"`, false, { earlier, later, timezone });
 }
 
 function zonedDateParts(date, timezone) {

@@ -399,7 +399,14 @@
     const projectId = valueOf(payload, 'projectId', 'project_id');
     if (projectId) tasks = tasks.filter((t) => t.projectId === projectId);
     const tagId = valueOf(payload, 'tagId', 'tag_id');
-    if (tagId) tasks = tasks.filter((t) => Array.isArray(t.tagIds) && t.tagIds.includes(tagId));
+    // TODAY, overdue and plannedForToday are relative to the app's logical day.
+    const usesToday = tagId === 'TODAY' || payload.overdue || payload.plannedForToday;
+    const day = usesToday ? await getDayContext() : null;
+    const logicalDay = (t) => scheduleDayIn(taskSchedule(t), day.startOfNextDayDiffMs);
+    // The app's Today rule: dueWithTime on the logical day, else dueDay; a stored
+    // TODAY tag id and legacy plannedAt do not count.
+    if (tagId === 'TODAY') tasks = tasks.filter((t) => appTodayDay(t, day.startOfNextDayDiffMs) === day.todayStr);
+    else if (tagId) tasks = tasks.filter((t) => Array.isArray(t.tagIds) && t.tagIds.includes(tagId));
     const isDone = valueOf(payload, 'isDone', 'is_done');
     if (typeof isDone === 'boolean') tasks = tasks.filter((t) => !!t.isDone === isDone);
     const isArchived = valueOf(payload, 'isArchived', 'is_archived');
@@ -412,15 +419,9 @@
       tasks = tasks.filter((t) => ((t.title || '') + (searchNotes ? '\n' + (t.notes || '') : '')).toLowerCase().includes(search));
     }
     if (valueOf(payload, 'parentsOnly', 'parents_only')) tasks = tasks.filter((t) => !t.parentId);
-    if (payload.overdue) {
-      const today = localDateStr(new Date());
-      tasks = tasks.filter((t) => { const day = taskSchedule(t).day; return day != null && day < today; });
-    }
+    if (payload.overdue) tasks = tasks.filter((t) => { const taskDay = logicalDay(t); return taskDay != null && taskDay < day.todayStr; });
     if (payload.unscheduled) tasks = tasks.filter((t) => taskSchedule(t).kind === 'none');
-    if (payload.plannedForToday) {
-      const today = localDateStr(new Date());
-      tasks = tasks.filter((t) => taskSchedule(t).day === today);
-    }
+    if (payload.plannedForToday) tasks = tasks.filter((t) => logicalDay(t) === day.todayStr);
     if (valueOf(payload, 'recurringOnly', 'recurring_only')) tasks = tasks.filter((t) => !!(t.repeatCfgId || t.recurrenceRule || t.repeatCycle));
     if (valueOf(payload, 'includeSynthetic', 'include_synthetic')) tasks = await withSyntheticTaskFields(tasks);
     const matched = tasks.length;
@@ -429,7 +430,9 @@
     const fields = Array.isArray(payload.fields) ? payload.fields : [];
     if (fields.length > 0) tasks = tasks.map((task) => pickFields(task, fields));
     // truncated: more tasks matched than were returned after offset/limit.
-    return { tasks, truncated: offset + tasks.length < matched };
+    const out = { tasks, truncated: offset + tasks.length < matched };
+    if (day) out.dayContext = day;
+    return out;
   }
 
   async function taskArchivedList(payload) {
@@ -983,15 +986,21 @@
 
   async function taskScheduleHealth(payload) {
     payload = payload || {};
-    const date = payload.date || localDateStr(new Date());
-    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be YYYY-MM-DD', false);
+    // No date: the app's logical Today. An explicit date is a calendar day.
+    const day = payload.date == null ? await getDayContext() : null;
+    const date = day ? day.todayStr : payload.date;
+    const offset = day ? day.startOfNextDayDiffMs : 0;
+    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be a valid YYYY-MM-DD date', false);
     const staleBeforeDate = valueOf(payload, 'staleBeforeDate', 'stale_before_date') || date;
-    if (!isLocalDateString(staleBeforeDate)) throw typedError('INVALID_REQUEST', 'staleBeforeDate must be YYYY-MM-DD', false);
+    if (!isLocalDateString(staleBeforeDate)) throw typedError('INVALID_REQUEST', 'staleBeforeDate must be a valid YYYY-MM-DD date', false);
     const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
     const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
     const oversizedNotesThreshold = Number(valueOf(payload, 'oversizedNotesThreshold', 'oversized_notes_threshold') == null ? 4000 : valueOf(payload, 'oversizedNotesThreshold', 'oversized_notes_threshold'));
     const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active')).filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived));
-    const scheduled = tasks.map((task) => ({ task, schedule: taskSchedule(task) }));
+    const scheduled = tasks.map((task) => {
+      const schedule = taskSchedule(task);
+      return { task, schedule: Object.assign({}, schedule, { day: scheduleDayIn(schedule, offset) }) };
+    });
     const where = (test) => scheduled.filter((e) => test(e.schedule, e.task)).map((e) => e.task);
     const lists = {
       plannedToday: where((s) => s.day === date),
@@ -1007,15 +1016,17 @@
     };
     const compactLists = Object.fromEntries(Object.entries(lists).map((pair) => [pair[0], pair[1].map(compactTaskSummary)]));
     const counts = Object.fromEntries(Object.entries(compactLists).map((pair) => [pair[0], pair[1].length]));
-    return { date, staleBeforeDate, counts, tasks: compactLists };
+    const basis = day ? { dayBasis: 'logical', dayContext: day } : { dayBasis: 'calendar' };
+    return Object.assign({ date, staleBeforeDate }, basis, { timeZone: hostTimeZone(), counts, tasks: compactLists });
   }
 
   async function taskScheduleRange(payload) {
     payload = payload || {};
     const startDate = valueOf(payload, 'startDate', 'start_date');
     const endDate = valueOf(payload, 'endDate', 'end_date') || startDate;
-    if (!isLocalDateString(startDate)) throw typedError('INVALID_REQUEST', 'startDate must be YYYY-MM-DD', false);
-    if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be YYYY-MM-DD', false);
+    if (!isLocalDateString(startDate)) throw typedError('INVALID_REQUEST', 'startDate must be a valid YYYY-MM-DD date', false);
+    if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be a valid YYYY-MM-DD date', false);
+    if (endDate < startDate) throw typedError('INVALID_REQUEST', 'endDate must not be before startDate', false);
     const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
     const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
     const entries = (await getTasksBySource(includeArchived ? 'all' : 'active'))
@@ -1027,7 +1038,7 @@
     for (const e of entries) {
       if (byDate.has(e.schedule.day)) byDate.get(e.schedule.day).push(compactTaskSummary(e.task));
     }
-    return { startDate, endDate, days: Array.from(byDate.entries()).map((pair) => ({ date: pair[0], tasks: pair[1] })) };
+    return { startDate, endDate, dayBasis: 'calendar', timeZone: hostTimeZone(), days: Array.from(byDate.entries()).map((pair) => ({ date: pair[0], tasks: pair[1] })) };
   }
 
   // Each day lists timed work by time, then day-only work by title.
@@ -1083,11 +1094,13 @@
     payload = payload || {};
     const date = payload.date;
     const time = payload.time || '09:00';
-    const timezone = payload.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
-    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be YYYY-MM-DD', false);
-    if (!/^\d{1,2}:\d{2}$/.test(time)) throw typedError('INVALID_REQUEST', 'time must be HH:MM', false);
-    const plannedAt = zonedWallTimeToMs(date, time, timezone);
-    return { plannedAt, iso: new Date(plannedAt).toISOString(), timezone };
+    const timezone = payload.timezone && payload.timezone !== 'local' ? payload.timezone : hostTimeZone();
+    if (!isLocalDateString(date)) throw typedError('INVALID_REQUEST', 'date must be a valid YYYY-MM-DD date', false);
+    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(time)) throw typedError('INVALID_REQUEST', 'time must be HH:MM from 00:00 to 23:59', false);
+    const resolved = resolveZonedWallTime(date, time, timezone, payload.disambiguation);
+    const out = { plannedAt: resolved.ms, iso: new Date(resolved.ms).toISOString(), timezone };
+    if (resolved.ambiguous) out.ambiguous = resolved.ambiguous;
+    return out;
   }
 
   async function taskAutoSchedule(payload) {
@@ -1177,12 +1190,38 @@
     if (task.timeEstimate != null && (!Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) < 0 || Number(task.timeEstimate) > oneYearMs)) return true;
     return false;
   }
-  function isLocalDateString(value) { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value); }
+  // Mirrors task-shape.js: a real calendar date, and calendar-arithmetic days
+  // (23 or 25 hours on DST changes).
+  function isLocalDateString(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parts = value.split('-').map(Number);
+    const date = new Date(0);
+    date.setUTCFullYear(parts[0], parts[1] - 1, parts[2]);
+    return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2];
+  }
   function dayRangeMs(dateStr) {
     const parts = dateStr.split('-').map(Number);
-    const start = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
-    return [start, start + 86400000];
+    return [new Date(parts[0], parts[1] - 1, parts[2]).getTime(), new Date(parts[0], parts[1] - 1, parts[2] + 1).getTime()];
   }
+  function appTodayDay(task, startOfNextDayDiffMs) {
+    const dueWithTime = validTimestamp(task.dueWithTime);
+    if (dueWithTime != null) return localDateStr(new Date(dueWithTime - (Number(startOfNextDayDiffMs) || 0)));
+    return isLocalDateString(task.dueDay) ? task.dueDay : null;
+  }
+  function scheduleDayIn(schedule, startOfNextDayDiffMs) {
+    if (schedule.kind !== 'timed') return schedule.day;
+    return localDateStr(new Date(schedule.at - (Number(startOfNextDayDiffMs) || 0)));
+  }
+  // The app's logical day, read on every call; host clock without getDayContext.
+  async function getDayContext() {
+    if (typeof PluginAPI.getDayContext === 'function') {
+      const ctx = await PluginAPI.getDayContext();
+      if (ctx && isLocalDateString(ctx.todayStr)) return { todayStr: ctx.todayStr, startOfNextDayDiffMs: Number(ctx.startOfNextDayDiffMs) || 0, source: 'app' };
+    }
+    return { todayStr: localDateStr(new Date()), startOfNextDayDiffMs: 0, source: 'host-clock' };
+  }
+  async function taskDayContext() { return getDayContext(); }
+  function hostTimeZone() { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'; }
 
   function localDateRange(startDate, endDate) {
     const dates = [];
@@ -1209,6 +1248,33 @@
       guess += delta;
     }
     return guess;
+  }
+
+  // Mirrors task-schedule.js: refuse a skipped wall time, and require
+  // disambiguation for a repeated one.
+  function zonedOffsetMs(ms, timezone) {
+    const p = zonedDateParts(new Date(ms), timezone);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(ms / 60000) * 60000;
+  }
+  function resolveZonedWallTime(dateStr, timeStr, timezone, disambiguation) {
+    const d = dateStr.split('-').map(Number);
+    const t = timeStr.split(':').map(Number);
+    const wall = Date.UTC(d[0], d[1] - 1, d[2], t[0], t[1]);
+    let candidates;
+    try {
+      const offsets = new Set([-86400000, 0, 86400000].map((shift) => zonedOffsetMs(wall + shift, timezone)));
+      candidates = Array.from(new Set(Array.from(offsets).map((offset) => wall - offset)))
+        .filter((ms) => { const p = zonedDateParts(new Date(ms), timezone); return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) === wall; })
+        .sort((a, b) => a - b);
+    } catch (e) {
+      throw typedError('INVALID_REQUEST', 'timezone ' + timezone + ' is not a known IANA time zone', false);
+    }
+    if (candidates.length === 0) throw typedError('INVALID_REQUEST', dateStr + ' ' + timeStr + ' does not exist in ' + timezone + ': the clocks skip it', false, { date: dateStr, time: timeStr, timezone });
+    if (candidates.length === 1) return { ms: candidates[0], ambiguous: null };
+    const earlier = candidates[0];
+    const later = candidates[candidates.length - 1];
+    if (disambiguation === 'earlier' || disambiguation === 'later') return { ms: disambiguation === 'earlier' ? earlier : later, ambiguous: { earlier, later, chosen: disambiguation } };
+    throw typedError('INVALID_REQUEST', dateStr + ' ' + timeStr + ' happens twice in ' + timezone + '; pass disambiguation "earlier" or "later"', false, { earlier, later, timezone });
   }
 
   function zonedDateParts(date, timezone) {
@@ -1532,6 +1598,7 @@ async function attachGitea(payload = {}) {
     'task.removeTag': taskRemoveTag,
     'task.moveToProject': taskMoveToProject,
     'task.worklog': taskWorklog,
+    'task.dayContext': taskDayContext,
     'project.list': async () => ({ projects: await PluginAPI.getAllProjects() }),
     'project.create': async (payload) => ({ projectId: await PluginAPI.addProject(payload || {}) }),
     'project.update': async (payload) => { await PluginAPI.updateProject(payload.projectId, payload.data || payload); return { updated: true }; },

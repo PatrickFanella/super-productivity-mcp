@@ -47,4 +47,8 @@
     <question>Before editing a recurring task's schedule, an agent wants to read its current repeat configuration and see which fields stock v20 lets it change. Which exact MCP tool, given the task's id, answers both?</question>
     <answer>get_task_recurrence</answer>
   </qa_pair>
+  <qa_pair>
+    <question>make_planned_at refuses 2026-11-01 01:30 in America/Chicago because that wall time happens twice. Which argument picks one of the two instants?</question>
+    <answer>disambiguation</answer>
+  </qa_pair>
 </evaluation>

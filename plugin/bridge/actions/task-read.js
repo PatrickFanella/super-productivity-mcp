@@ -1,6 +1,6 @@
 const { typedError } = require("../errors");
-const { findTask, getTasksBySource, localDateStr, valueOf } = require("./task-common");
-const { pickFields, sortAndPageTasks, taskSchedule, withSyntheticTaskFields } = require("./task-shape");
+const { findTask, getDayContext, getTasksBySource, valueOf } = require("./task-common");
+const { appTodayDay, pickFields, scheduleDayIn, sortAndPageTasks, taskSchedule, withSyntheticTaskFields } = require("./task-shape");
 
 async function taskList(payload) {
   payload = payload || {};
@@ -14,7 +14,16 @@ async function taskList(payload) {
     tasks = tasks.filter((task) => task.projectId === projectId);
   }
   const tagId = valueOf(payload, "tagId", "tag_id");
-  if (tagId) {
+  // TODAY, overdue and plannedForToday are relative to the app's logical day.
+  const usesToday = tagId === "TODAY" || payload?.overdue || payload?.plannedForToday;
+  const day = usesToday ? await getDayContext() : null;
+  const logicalDay = (task) => scheduleDayIn(taskSchedule(task), day.startOfNextDayDiffMs);
+  if (tagId === "TODAY") {
+    // The app's own Today rule (isTaskInToday): dueWithTime on the logical
+    // day, else dueDay. A stored "TODAY" tag id and legacy plannedAt do not
+    // count, so this matches what the app shows.
+    tasks = tasks.filter((task) => appTodayDay(task, day.startOfNextDayDiffMs) === day.todayStr);
+  } else if (tagId) {
     tasks = tasks.filter((task) => Array.isArray(task.tagIds) && task.tagIds.includes(tagId));
   }
   const isDone = valueOf(payload, "isDone", "is_done");
@@ -36,18 +45,16 @@ async function taskList(payload) {
     tasks = tasks.filter((task) => !task.parentId);
   }
   if (payload?.overdue) {
-    const today = localDateStr(new Date());
     tasks = tasks.filter((task) => {
-      const { day } = taskSchedule(task);
-      return day != null && day < today;
+      const taskDay = logicalDay(task);
+      return taskDay != null && taskDay < day.todayStr;
     });
   }
   if (payload?.unscheduled) {
     tasks = tasks.filter((task) => taskSchedule(task).kind === "none");
   }
   if (payload?.plannedForToday) {
-    const today = localDateStr(new Date());
-    tasks = tasks.filter((task) => taskSchedule(task).day === today);
+    tasks = tasks.filter((task) => logicalDay(task) === day.todayStr);
   }
   if (valueOf(payload, "recurringOnly", "recurring_only")) {
     tasks = tasks.filter((task) => !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle));
@@ -63,7 +70,9 @@ async function taskList(payload) {
     tasks = tasks.map((task) => pickFields(task, fields));
   }
   // truncated: more tasks matched than were returned after offset/limit.
-  return { tasks, truncated: offset + tasks.length < matched };
+  const out = { tasks, truncated: offset + tasks.length < matched };
+  if (day) out.dayContext = day;
+  return out;
 }
 
 async function taskArchivedList(payload) {
@@ -98,8 +107,13 @@ async function taskGet(payload) {
   return { task };
 }
 
+async function taskDayContext() {
+  return getDayContext();
+}
+
 module.exports = {
   taskArchivedList,
+  taskDayContext,
   taskCurrentContextList,
   taskGet,
   taskList,

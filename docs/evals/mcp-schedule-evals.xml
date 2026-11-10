@@ -67,4 +67,8 @@
     <question>A user's report is due Friday, but they plan to work on it Wednesday. Which update_task argument records the Friday due date without moving the planned work?</question>
     <answer>deadlineDay</answer>
   </qa_pair>
+  <qa_pair>
+    <question>Before suggesting a break, an agent checks whether the user is in a Pomodoro work session. Which read-only tool reports the focus timer, and what state value means a work timer is running?</question>
+    <answer>get_focus_state; work-running</answer>
+  </qa_pair>
 </evaluation>

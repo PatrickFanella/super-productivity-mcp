@@ -342,3 +342,10 @@ test("recurrence reads report a runtime without getAppState as unsupported (#22)
   assertSameOutcome(both);
   assert.equal(both.modular.error.code, "UNSUPPORTED_ACTION");
 });
+
+test("focus state needs Local REST in both plugin projections (#31)", async () => {
+  const both = await runBoth("focus.state", {});
+  assertSameOutcome(both);
+  assert.equal(both.modular.error.code, "UNSUPPORTED_ACTION");
+  assert.deepEqual(writes(both.modular.calls), []);
+});

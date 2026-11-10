@@ -35,6 +35,10 @@ var restRoutes = map[string]route{
 	"task.archive": {rest: archiveTask},
 	"task.restore": {rest: restoreTask},
 
+	"task.start":   {rest: startTask},
+	"task.stop":    {rest: stopTask},
+	"task.current": {rest: currentTask},
+
 	"task.listRecurrences": {rest: listRecurrences},
 	"task.getRecurrence":   {rest: getRecurrence},
 

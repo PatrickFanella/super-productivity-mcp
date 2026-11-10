@@ -54,13 +54,15 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | `set_task_recurrence` | `POST /task-repeat-cfgs` | Go server | `UNSUPPORTED_ACTION`, unless `SP_MCP_RECURRENCE_ROUTE=plugin`. |
 | `update_task_recurrence` | `GET /tasks/:id`, then `PATCH /task-repeat-cfgs/:id` | Go server | Same. |
 | `delete_task_recurrence` | `GET /tasks/:id`, then `DELETE /task-repeat-cfgs/:id` | Go server | Same. |
-| `start_task` | `POST /tasks/:id/start` | Modular plugin only | Plugin writes `currentTimestamp`. |
-| `stop_task` | `POST /task-control/stop` | Modular plugin only | Plugin clears `currentTimestamp`. |
-| `get_current_task` | `GET /task-control/current` | Modular plugin only | Plugin scans tasks for `currentTimestamp`. |
+| `start_task` | `GET /tasks/:id`, `GET /status`, `POST /task-control/current` | Go server | Plugin calls `PluginAPI.startTracking`. |
+| `stop_task` | `GET /status`, `POST /task-control/stop` | Go server | Plugin calls `PluginAPI.stopTracking`. |
+| `get_current_task` | `GET /status` | Go server | `UNSUPPORTED_ACTION`: the plugin API cannot read the tracked task. |
 
-"Modular plugin only" rows read `SP_LOCAL_REST_URL` from the plugin's own
-process, which the installed packaged plugin does not do. Roadmap issue #16
-moves them to the Go server.
+`start_task` refuses to take tracking over from another device that is
+live-tracking through SuperSync (`TRACKING_ON_OTHER_DEVICE`) unless the call
+passes `takeover: true`; `get_current_task` shows that session as
+`trackingOnOtherDevice`. Starting a parent tracks its first unfinished
+subtask, and `trackedTaskId` says which.
 
 Recurrence writes accept only the fields stock v20 can write: `quickSetting`,
 `startDate`, `repeatCycle`, `repeatEvery`, the weekdays (those three with

@@ -81,7 +81,7 @@ from v20, not a regression; the issue that fixes it updates the test.
 | Schedule reads | Fixed in #19: range, health, stale, unscheduled and shaped reads use one normalized schedule (`dueWithTime`, then legacy `plannedAt`, then `dueDay`). Before: `plannedAt` only, so timed v20 tasks looked unscheduled. | Tasks carry `dueWithTime` or `dueDay`. | #19 |
 | Archive | Fixed in #15: the Go server calls `POST /tasks/:id/archive` when Local REST is configured. Without REST both plugin projections fail with `UNSUPPORTED_ACTION`. | `POST /tasks/:id/archive`. | #15 |
 | Restore | Fixed in #25: the Go server calls `POST /tasks/:id/restore`. Without REST both plugin projections fail with `UNSUPPORTED_ACTION`. | `POST /tasks/:id/restore`. | #25 |
-| Tracking | Start writes `currentTimestamp`; current task reads it. | `startTracking` / `POST /task-control/current`. | #16 |
+| Tracking | Fixed in #16: the Go server uses `/status` and `/task-control`; the plugin uses `startTracking`/`stopTracking`. Before: start wrote `currentTimestamp`, which v20 ignores. | `startTracking` / `POST /task-control/current`. | #16 |
 | Recurrence | Fixed in #22 and #23: the Go server reads and writes `/task-repeat-cfgs`. The plugin's set, update and delete still dispatch actions stock v20 refuses; the router uses them only with `SP_MCP_RECURRENCE_ROUTE=plugin`. | `/task-repeat-cfgs`. | #22, #23 |
 | Create with repeat | Creates the task, then reports `recurrenceError`. | Attach through REST. | #24 |
 | Time logging | Add time changes `timeSpent` only. | `POST`/`PUT /tasks/:id/time` update the day. | #28 |

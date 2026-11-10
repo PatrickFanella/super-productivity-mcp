@@ -1,5 +1,4 @@
 const { typedError } = require("../errors");
-const localRest = require("../adapters/local-rest");
 const { findTask, getTasksBySource, isLocalDateString, startOfTodayMs, valueOf } = require("./task-common");
 
 const ARCHIVE_UNAVAILABLE_MESSAGE =
@@ -103,52 +102,38 @@ async function taskReorder(payload) {
   return { reordered: true };
 }
 
+// Tracking without Local REST uses PluginAPI.startTracking/stopTracking,
+// which v20 offers; when REST is configured the MCP server calls
+// /task-control itself. No handler writes currentTimestamp: v20 ignores it.
+const TRACKING_UNAVAILABLE =
+  "this Super Productivity runtime lacks PluginAPI.startTracking/stopTracking; configure Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN) instead";
+
 async function taskStart(payload) {
   const taskId = valueOf(payload || {}, "taskId", "task_id");
   if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
-  if (await localRest.startTask(taskId)) {
-    return { started: true, via: "localRest" };
-  }
-  const tasks = await PluginAPI.getTasks();
-  const task = tasks.find((candidate) => candidate.id === taskId);
+  if (typeof PluginAPI.startTracking !== "function") throw typedError("UNSUPPORTED_ACTION", `Starting a task: ${TRACKING_UNAVAILABLE}`, false);
+  const task = await findTask(taskId);
   if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
-  if (task.isDone) throw typedError("TASK_DONE", `Cannot start completed task ${taskId}`, false);
-  const active = tasks.find((candidate) => candidate.currentTimestamp > 0 && candidate.id !== taskId);
-  if (active) await PluginAPI.updateTask(active.id, { currentTimestamp: null });
-  await PluginAPI.updateTask(taskId, { currentTimestamp: Date.now() });
-  return { started: true };
+  if (task.isDone) throw typedError("TASK_DONE", `Cannot start completed task ${taskId}; mark it not done first`, false);
+  // startTracking tracks a parent's first unfinished subtask, and rejects a
+  // parent whose subtasks are all done.
+  await PluginAPI.startTracking(taskId);
+  return { started: true, via: "plugin" };
 }
 
 async function taskStop() {
-  if (await localRest.stopCurrentTask()) {
-    return { stopped: true, via: "localRest" };
-  }
-  const tasks = await PluginAPI.getTasks();
-  const active = tasks.find((task) => task.currentTimestamp > 0);
-  if (!active) return { stopped: false };
-  await PluginAPI.updateTask(active.id, { currentTimestamp: null });
-  return { stopped: true };
+  if (typeof PluginAPI.stopTracking !== "function") throw typedError("UNSUPPORTED_ACTION", `Stopping tracking: ${TRACKING_UNAVAILABLE}`, false);
+  await PluginAPI.stopTracking();
+  return { stopped: true, via: "plugin" };
 }
 
 async function taskCurrent() {
-  const restCurrent = await localRest.getCurrentTask();
-  if (restCurrent.configured) {
-    return { task: restCurrent.task, via: "localRest" };
-  }
-  const tasks = await PluginAPI.getTasks();
-  const active = tasks.find((task) => task.currentTimestamp > 0);
-  if (!active) return { task: null };
-  return {
-    task: {
-      id: active.id,
-      title: active.title,
-      isDone: active.isDone,
-      projectId: active.projectId,
-      parentId: active.parentId,
-      tagIds: active.tagIds,
-      dueDay: active.dueDay,
-    },
-  };
+  // The v20 plugin API has no current-task read; Local REST /status does.
+  throw typedError(
+    "UNSUPPORTED_ACTION",
+    "Reading the tracked task needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN); the plugin API has no current-task read",
+    false,
+  );
 }
 
 async function taskBulkComplete(payload) {

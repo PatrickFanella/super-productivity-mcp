@@ -97,6 +97,10 @@ func TestNewValidatesConfiguration(t *testing.T) {
 		{Config{BaseURL: "http://user:pw@127.0.0.1:3876"}, CodeMisconfigured},
 		{Config{BaseURL: "http://127.0.0.1:3876?x=1"}, CodeMisconfigured},
 		{Config{BaseURL: "http://sp.example.com:3876"}, CodeMisconfigured},
+		// The app listens on 127.0.0.1 only and its Host check refuses ::1.
+		{Config{BaseURL: "http://[::1]:3876"}, CodeMisconfigured},
+		{Config{BaseURL: "http://127.0.0.2:3876"}, CodeMisconfigured},
+		{Config{BaseURL: "http://127.0.0.1:3876", Token: "abc\r\nX-Injected: 1"}, CodeMisconfigured},
 	}
 	for _, c := range cases {
 		_, err := New(c.cfg)
@@ -104,7 +108,7 @@ func TestNewValidatesConfiguration(t *testing.T) {
 			t.Errorf("New(%+v) code = %s, want %s", c.cfg, te.Code, c.code)
 		}
 	}
-	for _, base := range []string{"http://127.0.0.1:3876", "http://localhost:3876/", "http://[::1]:3876", "http://127.0.0.1:4767/api"} {
+	for _, base := range []string{"http://127.0.0.1:3876", "http://localhost:3876/", "http://127.0.0.1:4767/api"} {
 		if _, err := New(Config{BaseURL: base}); err != nil {
 			t.Errorf("New(%q): %v", base, err)
 		}
@@ -118,7 +122,7 @@ func TestDoDecodesSuccessAndSendsToken(t *testing.T) {
 	fx := loadEnvelopes(t)["archiveOk"]
 	var seen []*http.Request
 	srv := serve(t, fx, &seen)
-	data, err := newClient(t, srv.URL+"/").Do(context.Background(), Request{Method: http.MethodPost, Path: SegmentPath("tasks", "fx-day-overdue", "archive"), Mutation: true})
+	data, err := newClient(t, srv.URL+"/").Do(context.Background(), Request{Method: http.MethodPost, Path: mustPath(t, "tasks", "fx-day-overdue", "archive"), Mutation: true})
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
@@ -142,7 +146,7 @@ func TestDoDecodesSuccessAndSendsToken(t *testing.T) {
 func TestDoKeepsPathPrefixAndEscapesSegments(t *testing.T) {
 	var seen []*http.Request
 	srv := serve(t, loadEnvelopes(t)["archiveOk"], &seen)
-	_, err := newClient(t, srv.URL+"/api").Do(context.Background(), Request{Method: http.MethodPost, Path: SegmentPath("tasks", "a/b?c", "archive"), Mutation: true})
+	_, err := newClient(t, srv.URL+"/api").Do(context.Background(), Request{Method: http.MethodPost, Path: mustPath(t, "tasks", "a/b?c", "archive"), Mutation: true})
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
@@ -268,6 +272,76 @@ func TestDoCanceledBeforeSend(t *testing.T) {
 	cancel()
 	_, err := newClient(t, srv.URL).Do(ctx, Request{Method: http.MethodPost, Path: "/tasks/x/archive", Mutation: true})
 	if te := typed(t, err); te.Code != CodeCanceled {
+		t.Fatalf("code = %s", te.Code)
+	}
+}
+
+func mustPath(t *testing.T, segments ...string) string {
+	t.Helper()
+	p, err := SegmentPath(segments...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSegmentPathRefusesDotSegments(t *testing.T) {
+	for _, id := range []string{"", ".", ".."} {
+		_, err := SegmentPath("tasks", id, "archive")
+		if te := typed(t, err); te.Code != CodeInvalidRequest {
+			t.Errorf("SegmentPath(%q) code = %s", id, te.Code)
+		}
+	}
+	if got := mustPath(t, "tasks", "..x", "archive"); got != "/tasks/..x/archive" {
+		t.Errorf("path = %s", got)
+	}
+}
+
+func TestServerErrorMessageIsNotPassedThrough(t *testing.T) {
+	srv := serve(t, fixtureResponse{Status: 500, Body: json.RawMessage(`{"ok":false,"error":{"code":"INTERNAL_ERROR","message":"Fixture private task title"}}`)}, nil)
+	_, err := newClient(t, srv.URL).Do(context.Background(), Request{Method: http.MethodGet, Path: "/tasks"})
+	te := typed(t, err)
+	if te.Code != CodeFailed || strings.Contains(te.Message, "Fixture private") {
+		t.Fatalf("5xx read: %+v", te)
+	}
+}
+
+func TestBodyCutOffAfterHeadersIsUncertainForMutations(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true`))
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Error("no hijacker")
+			return
+		}
+		conn, _, _ := hj.Hijack()
+		_ = conn.Close()
+	}))
+	defer srv.Close()
+	_, err := newClient(t, srv.URL).Do(context.Background(), Request{Method: http.MethodPost, Path: "/tasks/x/archive", Mutation: true})
+	if te := typed(t, err); te.Code != CodeOutcomeUnknown {
+		t.Fatalf("code = %s", te.Code)
+	}
+}
+
+func TestCancelAfterSendIsUncertainForMutations(t *testing.T) {
+	received := make(chan struct{})
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(received)
+		<-release
+	}))
+	defer srv.Close()
+	defer close(release)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-received
+		cancel()
+	}()
+	_, err := newClient(t, srv.URL).Do(ctx, Request{Method: http.MethodPost, Path: "/tasks/x/archive", Mutation: true})
+	if te := typed(t, err); te.Code != CodeOutcomeUnknown {
 		t.Fatalf("code = %s", te.Code)
 	}
 }

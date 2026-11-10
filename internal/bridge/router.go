@@ -117,11 +117,11 @@ func archiveTask(ctx context.Context, rest *localrest.Client, payload map[string
 	if taskID == "" {
 		return nil, domain.TypedError{Code: "INVALID_REQUEST", Message: "taskId is required"}
 	}
-	data, err := rest.Do(ctx, localrest.Request{
-		Method:   "POST",
-		Path:     localrest.SegmentPath("tasks", taskID, "archive"),
-		Mutation: true,
-	})
+	path, err := localrest.SegmentPath("tasks", taskID, "archive")
+	if err != nil {
+		return nil, err
+	}
+	data, err := rest.Do(ctx, localrest.Request{Method: "POST", Path: path, Mutation: true})
 	if err != nil {
 		return nil, err
 	}

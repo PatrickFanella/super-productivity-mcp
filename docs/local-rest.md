@@ -23,7 +23,7 @@ Set these in the MCP client's environment for `sp-mcp`, next to
 | `SUPER_PRODUCTIVITY_REST_URL` | No | Alias used when `SP_LOCAL_REST_URL` is unset. |
 | `SP_LOCAL_REST_TOKEN` | With v20 | Access token, sent as `Authorization: Bearer <token>`. |
 | `SP_LOCAL_REST_TIMEOUT` | No | Per-request timeout, default `20s`. |
-| `SP_LOCAL_REST_ALLOW_REMOTE` | No | Set to `1` to allow a host other than `127.0.0.1`, `::1` or `localhost`, for example through a tunnel you set up. |
+| `SP_LOCAL_REST_ALLOW_REMOTE` | No | Set to `1` to allow a host other than `127.0.0.1` or `localhost`, for example through a tunnel you set up. The app itself listens only on `127.0.0.1`. |
 
 The URL is used as written. An older URL such as `http://127.0.0.1:4767/api`
 is not rewritten; stock v20 answers it with "connection refused" or
@@ -33,10 +33,14 @@ is not rewritten; stock v20 answers it with "connection refused" or
 
 - The token is sent only to the configured URL. Requests ignore `HTTP_PROXY`
   and similar variables and never follow redirects.
-- No error message contains the token or a response body. Upstream error
-  messages are kept only from the app's own `{ok:false, error}` replies, cut
-  to 200 characters.
-- A URL with a username, password, query or fragment is refused.
+- No error message contains the token or a response body.
+- A URL with a username, password, query or fragment is refused, and so is a
+  token with control characters.
+- Without `SP_LOCAL_REST_ALLOW_REMOTE`, `localhost` must resolve to a loopback
+  address when the connection is made.
+- Error messages from the app's own server errors (5xx) are dropped; only
+  their code is kept. Messages from rejected requests (4xx) are kept, cut to
+  200 characters.
 
 ## Tools that use Local REST
 
@@ -81,12 +85,12 @@ A REST-routed tool never falls back to the plugin after a REST error.
 | Code | Meaning | What to do |
 |------|---------|------------|
 | `UNSUPPORTED_ACTION` | Local REST is not configured for an operation that needs it. | Set `SP_LOCAL_REST_URL` and `SP_LOCAL_REST_TOKEN`, or use the documented fallback. |
-| `LOCAL_REST_MISCONFIGURED` | The URL is set but unusable (not absolute, not loopback, contains credentials). The server logs a warning at startup. | Fix the URL. |
+| `LOCAL_REST_MISCONFIGURED` | The URL or token is set but unusable (not absolute, not `127.0.0.1`/`localhost`, contains credentials, token with control characters). The server logs a warning at startup. | Fix the setting. |
 | `LOCAL_REST_UNAVAILABLE` | Nothing was done: the connection was refused, the API is switched off, the app is still starting, or too many requests are open. Retryable. | Start the app or enable the API, then retry. |
 | `LOCAL_REST_UNAUTHORIZED` | The token is missing or wrong. | Copy the token from Settings → Misc and restart the client. |
 | `LOCAL_REST_UNSUPPORTED_ROUTE` | This app version does not offer the route, or the URL has a wrong prefix. | Use `http://127.0.0.1:3876` on v20. |
 | `OUTCOME_UNKNOWN` | A change was sent, but no clear answer came back (timeout, server error, unreadable reply). It may have been applied. | Check the task, for example with `get_tasks source:"archived"`, before retrying. |
-| `TASK_NOT_FOUND`, `INVALID_REQUEST`, `UNSUPPORTED_FIELD` | The app rejected the request; nothing changed. | Fix the request. |
+| `TASK_NOT_FOUND`, `INVALID_REQUEST`, `UNSUPPORTED_FIELD` | The request was rejected and nothing changed. A task ID of `.` or `..` is refused before sending. | Fix the request. |
 
 ## Safety notes
 

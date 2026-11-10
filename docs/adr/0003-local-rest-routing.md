@@ -41,8 +41,10 @@ The Go server talks to Local REST itself:
 - The token stays in the Go process. Requests use no proxy and follow no
   redirects, and no error message contains the token or a response body that
   is not an envelope.
-- A non-loopback host needs `SP_LOCAL_REST_ALLOW_REMOTE=1`. A URL is used as
-  written; a legacy prefix such as `/api` is not rewritten.
+- A host other than `127.0.0.1` or `localhost` needs
+  `SP_LOCAL_REST_ALLOW_REMOTE=1`; without it, the dialer also refuses a
+  `localhost` that resolves off the machine. A URL is used as written; a
+  legacy prefix such as `/api` is not rewritten.
 - Settings that are present but unusable make the REST-mapped actions fail
   with `LOCAL_REST_MISCONFIGURED`. They do not quietly fall back to plugin IPC.
 

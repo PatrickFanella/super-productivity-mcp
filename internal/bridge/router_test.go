@@ -146,8 +146,10 @@ func mustErr(_ domain.Response, err error) error { return err }
 func TestArchiveRequiresTaskIDBeforeSending(t *testing.T) {
 	srv := newRESTServer(t, 200, `{"ok":true,"data":{"archived":true}}`)
 	r := NewWith(restClient(t, srv.URL), unavailablePlugin(t))
-	if got := code(t, mustErr(r.Call(context.Background(), domain.Request{Action: "task.archive", Payload: map[string]any{}}))); got != "INVALID_REQUEST" {
-		t.Fatalf("code = %s", got)
+	for _, payload := range []map[string]any{{}, {"taskId": ".."}, {"taskId": "."}} {
+		if got := code(t, mustErr(r.Call(context.Background(), domain.Request{Action: "task.archive", Payload: payload}))); got != "INVALID_REQUEST" {
+			t.Fatalf("payload %v: code = %s", payload, got)
+		}
 	}
 	if srv.requests.Load() != 0 {
 		t.Fatalf("request sent without a task id")

@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/PatrickFanella/super-productivity-mcp/internal/domain"
@@ -101,8 +102,12 @@ func New(cfg Config) (*Client, error) {
 	if base.RawQuery != "" || base.Fragment != "" {
 		return nil, misconfigured("SP_LOCAL_REST_URL must not contain a query or fragment")
 	}
-	if !cfg.AllowRemote && !isLoopback(base.Hostname()) {
-		return nil, misconfigured("SP_LOCAL_REST_URL must point at a loopback address; set SP_LOCAL_REST_ALLOW_REMOTE=1 to use another host")
+	if !cfg.AllowRemote && !isLoopbackHost(base.Hostname()) {
+		return nil, misconfigured("SP_LOCAL_REST_URL must point at 127.0.0.1 or localhost, where the app listens; set SP_LOCAL_REST_ALLOW_REMOTE=1 to use another host")
+	}
+	token := strings.TrimSpace(cfg.Token)
+	if strings.IndexFunc(token, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return nil, misconfigured("SP_LOCAL_REST_TOKEN contains control characters; copy the token again from Settings → Misc")
 	}
 	base.Path = strings.TrimRight(base.Path, "/")
 	base.RawPath = ""
@@ -110,10 +115,22 @@ func New(cfg Config) (*Client, error) {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	if !cfg.AllowRemote {
+		// "localhost" is resolved at dial time; refuse it if a hosts or DNS
+		// entry points it away from this machine.
+		dialer.Control = func(_, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
+				return errNonLoopback
+			}
+			return nil
+		}
+	}
 	transport := &http.Transport{
 		// Never route the token through a proxy, even if HTTP_PROXY is set.
 		Proxy:                 nil,
-		DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		DialContext:           dialer.DialContext,
 		MaxIdleConns:          4,
 		IdleConnTimeout:       30 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
@@ -121,7 +138,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	return &Client{
 		base:    base,
-		token:   strings.TrimSpace(cfg.Token),
+		token:   token,
 		timeout: timeout,
 		http: &http.Client{
 			Transport: transport,
@@ -135,12 +152,12 @@ func misconfigured(msg string) error {
 	return domain.TypedError{Code: CodeMisconfigured, Message: msg}
 }
 
-func isLoopback(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+var errNonLoopback = errors.New("local REST host did not resolve to a loopback address")
+
+// isLoopbackHost accepts the two host names the app's Host check allows. It
+// listens on 127.0.0.1 only, so ::1 and other 127/8 addresses never work.
+func isLoopbackHost(host string) bool {
+	return host == "127.0.0.1" || strings.EqualFold(host, "localhost")
 }
 
 // Request is one Local REST call.
@@ -211,6 +228,9 @@ func (c *Client) Do(ctx context.Context, req Request) (json.RawMessage, error) {
 }
 
 func (c *Client) transportError(ctx context.Context, req Request, wrote bool, err error) error {
+	if errors.Is(err, errNonLoopback) {
+		return misconfigured("SP_LOCAL_REST_URL resolved to an address that is not on this machine; nothing was sent")
+	}
 	if !wrote {
 		// Nothing reached the server, so nothing ran.
 		if errors.Is(ctx.Err(), context.Canceled) {
@@ -296,7 +316,8 @@ func decode(req Request, status int, raw []byte) (json.RawMessage, error) {
 		if req.Mutation {
 			return nil, outcomeUnknown("the app reported " + upstreamCode)
 		}
-		return nil, te(CodeFailed, true, "Local REST failed: "+upstreamMsg)
+		// A 5xx message can carry renderer exception text; keep only the code.
+		return nil, te(CodeFailed, true, "Local REST failed with "+upstreamCode)
 	case upstreamCode == "INVALID_INPUT" || upstreamCode == "INVALID_REQUEST_BODY":
 		return nil, te(CodeInvalidRequest, false, upstreamMsg)
 	default:
@@ -322,13 +343,18 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// SegmentPath joins already-trusted literal segments with escaped values,
-// for example SegmentPath("tasks", id, "archive").
-func SegmentPath(segments ...string) string {
+// SegmentPath joins path segments, escaping each one, for example
+// SegmentPath("tasks", id, "archive"). An empty, "." or ".." segment is
+// refused with INVALID_REQUEST: the server would collapse it and the request
+// would reach a different route.
+func SegmentPath(segments ...string) (string, error) {
 	var b strings.Builder
 	for _, s := range segments {
+		if s == "" || s == "." || s == ".." {
+			return "", domain.TypedError{Code: CodeInvalidRequest, Message: "an identifier must not be empty, \".\" or \"..\""}
+		}
 		b.WriteByte('/')
 		b.WriteString(url.PathEscape(s))
 	}
-	return b.String()
+	return b.String(), nil
 }

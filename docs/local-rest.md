@@ -107,6 +107,17 @@ returns `TASK_NOT_FOUND`; restore brings its archived subtasks back too.
 }
 ```
 
+## Status and capabilities
+
+`get_status` probes the plugin bridge and Local REST at the same time, each
+for at most three seconds, and reports `readiness`: `ready` when every
+configured adapter answered, `partial` when only some did, `unavailable`
+when none did. A plugin that stopped answering therefore shows as `partial`
+instead of hanging the call, and REST-routed tools keep working.
+`bridge_capabilities` lists, per action, the adapter it uses, whether that
+adapter answered, and known limitations. `bridge_health` checks only the
+plugin bridge.
+
 ## Errors
 
 A REST-routed tool never falls back to the plugin after a REST error.

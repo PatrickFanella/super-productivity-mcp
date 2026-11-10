@@ -64,11 +64,11 @@ Scope is the `SP_MCP_SCOPES` entry a tool needs; tools without one are always av
 | `increment_counter` | `counter.increment` | write | Increment one plugin counter by id; delta defaults to 1 |
 | `decrement_counter` | `counter.decrement` | write | Decrement one plugin counter by id; delta defaults to 1 |
 | `delete_counter` | `counter.delete` | write | Delete one plugin counter by id when PluginAPI.deleteCounter is available |
-| `bridge_health` | `bridge.health` | - | Check if the SP plugin bridge is healthy and responding |
+| `bridge_health` | `bridge.health` | - | Check if the plugin bridge (file IPC) is healthy and responding. It does not check Local REST; get_status reports both. |
 | `check_connection` | `bridge.checkConnection` | - | Upstream-compatible alias for checking whether Super Productivity and the plugin bridge are responding |
-| `get_status` | `bridge.status` | - | Reports whether Super Productivity and the plugin bridge are ready, and which access scopes this server grants. Returns no task data. Reports isReady:false instead of failing when the bridge does not answer. |
+| `get_status` | `bridge.status` | - | Reports whether each adapter is ready (plugin: the plugin bridge; localRest: Super Productivity's Local REST API, when configured), and which access scopes this server grants. readiness is ready when every configured adapter answered, partial when only some did, unavailable when none did; isReady is true only for ready. Each probe is bounded, so a stalled plugin cannot stall this answer. Returns no task data and reports isReady:false instead of failing. |
 | `debug_directories` | `bridge.debugDirectories` | - | Show resolved plugin bridge IPC directories for diagnostics |
-| `bridge_capabilities` | `bridge.capabilities` | - | Get the SP plugin bridge capabilities and supported actions |
+| `bridge_capabilities` | `bridge.capabilities` | - | List the registered actions (supportedActions, the catalog surface) and, per action in operations, which adapter it uses on this runtime, whether that adapter answered, and known limitations such as fields stock v20 cannot write. adapters shows plugin and Local REST readiness. A registered action is not necessarily available. |
 
 ## Resources
 

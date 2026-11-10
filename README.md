@@ -167,8 +167,10 @@ OpenCode example:
 | `SP_MCP_RETRIES` | `3` | Number of retries on transient bridge errors |
 | `SP_MCP_SCOPES` | all scopes | Comma-separated access grant: `read`, `notes`, `create`, `write` (or `all`). See [Access scopes](#access-scopes) |
 | `SP_MCP_MAX_RESPONSE_BYTES` | `0` (no cap) | Refuse tool and resource results larger than this many bytes with `RESPONSE_TOO_LARGE` |
-| `SP_LOCAL_REST_URL` / `SUPER_PRODUCTIVITY_REST_URL` | unset | Optional Super Productivity local REST base URL used for true archive operations |
-| `SP_LOCAL_REST_TOKEN` | unset | Optional bearer token for the local REST API |
+| `SP_LOCAL_REST_URL` / `SUPER_PRODUCTIVITY_REST_URL` | unset | Super Productivity's Local REST base URL (stock v20: `http://127.0.0.1:3876`). The MCP server calls it directly for true archive |
+| `SP_LOCAL_REST_TOKEN` | unset | Bearer token from Settings → Misc → Access Token; stock v20 requires it |
+| `SP_LOCAL_REST_TIMEOUT` | `20s` | Per-request timeout for Local REST calls |
+| `SP_LOCAL_REST_ALLOW_REMOTE` | unset | Set to `1` to allow a non-loopback Local REST host |
 
 The plugin inside Super Productivity must be configured to use the **same** `SP_MCP_DATA_DIR`.
 
@@ -224,7 +226,7 @@ Safety notes:
 - When a non-idempotent write times out after the plugin picked it up, the error is `OUTCOME_UNKNOWN` (not retryable): check the current state before retrying.
 - `list_tasks`, `list_projects` and `list_tags` are aliases of `get_tasks`, `get_projects` and `get_tags`, matching Super Productivity's built-in MCP. `get_tasks` also reports `truncated` when `limit` or `offset` left matches out.
 - Broad schedule and note writes are dry-run-first where possible. Use `dryRun:false` plus `confirmApply:true` only after inspecting returned diffs.
-- True archive/restore uses the optional Local REST API. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied, and `restore_task` is unavailable.
+- True archive uses Super Productivity's Local REST API, which the MCP server calls itself. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied. A failed REST archive is never retried through the plugin. `restore_task` still depends on the plugin process's environment; see [`docs/local-rest.md`](docs/local-rest.md).
 - Recurrence tools require a Super Productivity build whose plugin sandbox allows repeat-config actions. For non-interactive automation, call `update_task_recurrence` without `isAskToUpdateAllTaskInstances` or set it to `false`; setting it to `true` intentionally asks Super Productivity to show the UI confirmation for updating existing task instances.
 
 ## Package the Super Productivity plugin

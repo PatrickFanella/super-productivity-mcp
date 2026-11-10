@@ -20,7 +20,7 @@ Scope is the `SP_MCP_SCOPES` entry a tool needs; tools without one are always av
 | `delete_task_recurrence` | `task.deleteRecurrence` | write | Remove recurrence from a recurring task by deleting its TaskRepeatCfg and unlinking task instances. |
 | `complete_task` | `task.complete` | write | Mark a task as done |
 | `uncomplete_task` | `task.uncomplete` | write | Unmark a task as done |
-| `archive_task` | `task.archive` | write | True-archive a task via optional Local REST. Requires SP_LOCAL_REST_URL/SUPER_PRODUCTIVITY_REST_URL; without REST this errors unless allowDoneFallback:true explicitly accepts marking the task done instead. |
+| `archive_task` | `task.archive` | write | True-archive a top-level task (its subtasks go with it) through Super Productivity's Local REST API, which the MCP server calls directly. Needs SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN. Without REST this errors unless allowDoneFallback:true explicitly accepts marking the task done instead; a failed REST archive is never retried that way. |
 | `restore_task` | `task.restore` | write | Restore an archived task through the optional Local REST API. Requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL; no plugin fallback exists. |
 | `delete_task` | `task.delete` | write | Delete a task permanently when the Super Productivity plugin runtime supports deleteTask |
 | `add_time_to_task` | `task.addTime` | write | Add tracked time to a task (timeMs is duration in milliseconds) |

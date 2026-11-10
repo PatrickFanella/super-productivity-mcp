@@ -782,11 +782,13 @@
     if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
     const task = await findTask(taskId);
     if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+    // The MCP server sends true archive to Local REST itself when it is
+    // configured; a request reaching the plugin means REST is not configured.
     if (valueOf(payload || {}, 'allowDoneFallback', 'allow_done_fallback') === true) {
       await PluginAPI.updateTask(taskId, { isDone: true, doneOn: Date.now() });
-      return { archived: false, note: 'True archive unavailable in browser plugin; explicit allowDoneFallback marked task done instead' };
+      return { archived: false, note: 'Local REST is not configured; explicit allowDoneFallback marked the task done instead of archiving it' };
     }
-    throw typedError('UNSUPPORTED_ACTION', 'True archive requires the modular bridge with SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL. Pass allowDoneFallback:true only if marking done is acceptable.', false);
+    throw typedError('UNSUPPORTED_ACTION', 'True archive needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. Pass allowDoneFallback:true only if marking the task done is acceptable.', false);
   }
   async function taskAddTime(payload) {
     const task = await findTask(payload.taskId);

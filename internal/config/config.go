@@ -32,6 +32,16 @@ type Config struct {
 	// MaxResponseBytes caps a tool result's JSON size; 0 disables the cap
 	// (SP_MCP_MAX_RESPONSE_BYTES).
 	MaxResponseBytes int
+
+	// Local REST settings. An empty URL leaves every action on plugin IPC.
+	// LocalRESTURL comes from SP_LOCAL_REST_URL, or SUPER_PRODUCTIVITY_REST_URL
+	// when that is unset; stock v20 serves http://127.0.0.1:3876.
+	LocalRESTURL   string
+	LocalRESTToken string // SP_LOCAL_REST_TOKEN
+	// LocalRESTAllowRemote permits a non-loopback host (SP_LOCAL_REST_ALLOW_REMOTE).
+	LocalRESTAllowRemote bool
+	// LocalRESTTimeout bounds one request (SP_LOCAL_REST_TIMEOUT); 0 = default.
+	LocalRESTTimeout time.Duration
 }
 
 func Load() Config {
@@ -64,6 +74,17 @@ func Load() Config {
 			maxResponseBytes = n
 		}
 	}
+	restURL := strings.TrimSpace(os.Getenv("SP_LOCAL_REST_URL"))
+	if restURL == "" {
+		restURL = strings.TrimSpace(os.Getenv("SUPER_PRODUCTIVITY_REST_URL"))
+	}
+	var restTimeout time.Duration
+	if raw := os.Getenv("SP_LOCAL_REST_TIMEOUT"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			restTimeout = d
+		}
+	}
+	allowRemote, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("SP_LOCAL_REST_ALLOW_REMOTE")))
 	level := os.Getenv("SP_MCP_LOG_LEVEL")
 	if level == "" {
 		level = "info"
@@ -84,6 +105,11 @@ func Load() Config {
 		Scopes:           scopes,
 		InvalidScopes:    invalidScopes,
 		MaxResponseBytes: maxResponseBytes,
+
+		LocalRESTURL:         restURL,
+		LocalRESTToken:       strings.TrimSpace(os.Getenv("SP_LOCAL_REST_TOKEN")),
+		LocalRESTAllowRemote: allowRemote,
+		LocalRESTTimeout:     restTimeout,
 	}
 }
 

@@ -2,6 +2,10 @@ const { typedError } = require("../errors");
 const localRest = require("../adapters/local-rest");
 const { findTask, getTasksBySource, startOfTodayMs, valueOf } = require("./task-common");
 
+const ARCHIVE_UNAVAILABLE_MESSAGE =
+  "True archive needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. Pass allowDoneFallback:true only if marking the task done is acceptable.";
+const ARCHIVE_FALLBACK_NOTE = "Local REST is not configured; explicit allowDoneFallback marked the task done instead of archiving it";
+
 async function taskUpdate(payload) {
   if (!payload.taskId) {
     throw typedError("INVALID_REQUEST", "taskId is required", false);
@@ -28,20 +32,14 @@ async function taskArchive(payload) {
   const task = await findTask(taskId);
   if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
 
-  if (await localRest.archiveTask(taskId)) {
-    return { archived: true, via: "localRest" };
-  }
-
+  // The MCP server sends true archive to Local REST itself when it is
+  // configured; a request reaching the plugin means REST is not configured.
   if (valueOf(payload || {}, "allowDoneFallback", "allow_done_fallback") === true) {
     await PluginAPI.updateTask(taskId, { isDone: true, doneOn: Date.now() });
-    return { archived: false, note: "Local REST archive unavailable; explicit allowDoneFallback marked task done instead" };
+    return { archived: false, note: ARCHIVE_FALLBACK_NOTE };
   }
 
-  throw typedError(
-    "UNSUPPORTED_ACTION",
-    "True archive requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL. Pass allowDoneFallback:true only if marking done is acceptable.",
-    false,
-  );
+  throw typedError("UNSUPPORTED_ACTION", ARCHIVE_UNAVAILABLE_MESSAGE, false);
 }
 
 async function taskRestore(payload) {

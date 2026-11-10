@@ -478,29 +478,25 @@ test("task.archive errors unless true archive or explicit fallback is available"
   else process.env.SP_LOCAL_REST_URL = oldUrl;
 });
 
-test("task.archive uses configured local REST archive endpoint", async () => {
+test("task.archive never calls REST from the plugin, even when its env names a URL", async () => {
+  // True archive is delivered by the Go server (internal/bridge); the plugin
+  // only handles the no-REST case.
   const oldUrl = process.env.SP_LOCAL_REST_URL;
-  const oldToken = process.env.SP_LOCAL_REST_TOKEN;
   const oldFetch = global.fetch;
-  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3219/api";
-  process.env.SP_LOCAL_REST_TOKEN = "token-1";
-  let received;
-  global.PluginAPI = { getTasks: async () => [{ id: "task-1" }] };
-  global.fetch = async (url, options) => {
-    received = { url, options };
+  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3876";
+  let fetched = false;
+  global.fetch = async () => {
+    fetched = true;
     return { ok: true, status: 200, text: async () => "" };
   };
+  global.PluginAPI = { getTasks: async () => [{ id: "task-1" }], updateTask: async () => {} };
 
-  assert.deepEqual(await taskActions["task.archive"]({ taskId: "task-1" }), { archived: true, via: "localRest" });
-  assert.equal(received.url, "http://127.0.0.1:3219/api/tasks/task-1/archive");
-  assert.equal(received.options.method, "POST");
-  assert.equal(received.options.headers.Authorization, "Bearer token-1");
+  await assert.rejects(taskActions["task.archive"]({ taskId: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
+  assert.equal(fetched, false);
 
+  global.fetch = oldFetch;
   if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
   else process.env.SP_LOCAL_REST_URL = oldUrl;
-  if (oldToken === undefined) delete process.env.SP_LOCAL_REST_TOKEN;
-  else process.env.SP_LOCAL_REST_TOKEN = oldToken;
-  global.fetch = oldFetch;
 });
 
 test("task.restore requires and uses configured local REST endpoint", async () => {

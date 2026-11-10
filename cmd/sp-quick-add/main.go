@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/PatrickFanella/super-productivity-mcp/internal/bridge"
 	"github.com/PatrickFanella/super-productivity-mcp/internal/config"
-	"github.com/PatrickFanella/super-productivity-mcp/internal/pluginipc"
 	"github.com/PatrickFanella/super-productivity-mcp/internal/quickadd"
 )
 
@@ -44,12 +44,8 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 
 	var creator quickadd.TaskCreator
 	if !opts.dryRun {
-		bridge, err := pluginipc.NewClient(config.Load())
-		if err != nil {
-			fmt.Fprintf(stderr, "sp-quick-add: failed to init bridge: %v\n", err)
-			return 1
-		}
-		creator = quickadd.BridgeTaskCreator{Bridge: bridge}
+		// Same routing as sp-mcp; task creation stays on plugin IPC.
+		creator = quickadd.BridgeTaskCreator{Bridge: bridge.New(config.Load())}
 	}
 
 	var notifier quickadd.Notifier

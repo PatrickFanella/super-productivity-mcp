@@ -177,6 +177,8 @@ The plugin inside Super Productivity must be configured to use the **same** `SP_
 
 See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported tools, fallbacks, and troubleshooting.
 
+Live checks against stock Super Productivity v20 follow [`docs/verification/v20-qualification.md`](docs/verification/v20-qualification.md); results are recorded in [`docs/verification/v20-qualification-report.md`](docs/verification/v20-qualification-report.md).
+
 ### Access scopes
 
 `SP_MCP_SCOPES` limits what a client connected to this server can see and do. Leaving it unset grants every scope, which is the behaviour before scopes existed.

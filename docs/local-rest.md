@@ -51,6 +51,7 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | `restore_task` | `POST /tasks/:id/restore` | Go server | `UNSUPPORTED_ACTION`; no fallback. |
 | `get_task_recurrences` | `GET /task-repeat-cfgs` | Go server | Plugin reads `PluginAPI.getAppState()`. |
 | `get_task_recurrence` | `GET /tasks/:id`, then `GET /task-repeat-cfgs/:id` | Go server | Plugin reads `PluginAPI.getAppState()`. |
+| `create_task` with `repeat` | `GET /status`, plugin create, then `POST /task-repeat-cfgs` | Go server | `UNSUPPORTED_ACTION` before anything is created, unless `SP_MCP_RECURRENCE_ROUTE=plugin`. |
 | `set_task_recurrence` | `POST /task-repeat-cfgs` | Go server | `UNSUPPORTED_ACTION`, unless `SP_MCP_RECURRENCE_ROUTE=plugin`. |
 | `update_task_recurrence` | `GET /tasks/:id`, then `PATCH /task-repeat-cfgs/:id` | Go server | Same. |
 | `delete_task_recurrence` | `GET /tasks/:id`, then `DELETE /task-repeat-cfgs/:id` | Go server | Same. |

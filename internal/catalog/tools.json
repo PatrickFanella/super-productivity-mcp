@@ -17,7 +17,7 @@
     {
       "mcpName": "create_task",
       "action": "task.create",
-      "description": "Create a new task in Super Productivity. Supports short syntax in title: #tag, +project, @due, estimates like 30m or 1h/2h; pass literal:true to keep the title exactly as written. Pass dueDate (and optionally dueTime, local HH:MM; a skipped or repeated DST time is refused) to schedule the task, and repeat to make it recurring. A time is set right after the task is added; if that fails the result keeps taskId and adds scheduleError. The parsed title is stored as is, never parsed again. Retrying after a timeout can create a duplicate.",
+      "description": "Create a new task in Super Productivity. Supports short syntax in title: #tag, +project, @due, estimates like 30m or 1h/2h; pass literal:true to keep the title exactly as written. Pass dueDate (and optionally dueTime, local HH:MM; a skipped or repeated DST time is refused) to schedule the task, and repeat to make it recurring: the MCP server validates repeat and checks Local REST first, creates the task once, then attaches the recurrence through Local REST (the task's time becomes the recurrence time). If attaching fails the result keeps taskId and adds recurrenceError; creation is never retried. repeat needs Local REST on stock v20. A time is set right after the task is added; if that fails the result keeps taskId and adds scheduleError. The parsed title is stored as is, never parsed again. Retrying after a timeout can create a duplicate.",
       "title": "Create task",
       "scope": "create",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },

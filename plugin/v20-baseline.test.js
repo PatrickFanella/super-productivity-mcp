@@ -197,7 +197,8 @@ for (const [action, payload, actionType] of [
   });
 }
 
-test("baseline gap (#24): create with repeat creates the task, then reports recurrenceError", async () => {
+// Legacy plugin path only: the router strips repeat and attaches it over REST (#24).
+test("legacy plugin path: create with repeat creates the task, then reports recurrenceError", async () => {
   const both = await runBoth("task.create", { title: "Fixture repeat", dueDate: "2026-11-10", repeat: { cycle: "daily" } });
   for (const side of [both.modular, both.packaged]) {
     assert.equal(side.ok, true);

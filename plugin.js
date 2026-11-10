@@ -574,6 +574,7 @@
 
   async function taskUpdate(payload) {
     if (!payload.taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
+    if (['deadlineDay', 'deadlineWithTime', 'deadlineRemindAt'].some((key) => key in payload)) throw typedError('UNSUPPORTED_ACTION', 'Deadlines need Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false);
     const updates = Object.assign({}, payload);
     delete updates.taskId;
     const input = {};
@@ -1362,7 +1363,7 @@
   // task, null for day-only and unscheduled tasks.
   function compactTaskSummary(task) {
     const schedule = taskSchedule(task);
-    return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, dueWithTime: task.dueWithTime == null ? null : task.dueWithTime, plannedAt: schedule.at, scheduleKind: schedule.kind, scheduledDay: schedule.day, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
+    return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, dueWithTime: task.dueWithTime == null ? null : task.dueWithTime, plannedAt: schedule.at, scheduleKind: schedule.kind, scheduledDay: schedule.day, deadlineDay: task.deadlineDay == null ? null : task.deadlineDay, deadlineWithTime: task.deadlineWithTime == null ? null : task.deadlineWithTime, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
   }
   function hasSuspiciousDatesOrEstimates(task) {
     const tenYears = Date.now() + 10 * 365 * 86400000;

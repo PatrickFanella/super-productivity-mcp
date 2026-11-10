@@ -208,7 +208,7 @@
     {
       "mcpName": "update_task",
       "action": "task.update",
-      "description": "Update an existing task. Schedule fields are written as stock v20 stores them: dueWithTime for timed work (dueDay cleared, an existing reminder moved with the time), dueDay for day-only work, null to clear (clearing a time dismisses its reminder). plannedAt is a compatibility alias of dueWithTime; passing both with different values, a dueDay that is not the day of dueWithTime, or a dueDay alone for a task that has a time is refused before writing. Titles are stored literally.",
+      "description": "Update an existing task. Schedule fields are written as stock v20 stores them: dueWithTime for timed work (dueDay cleared, an existing reminder moved with the time), dueDay for day-only work, null to clear (clearing a time dismisses its reminder). plannedAt is a compatibility alias of dueWithTime; passing both with different values, a dueDay that is not the day of dueWithTime, or a dueDay alone for a task that has a time is refused before writing. Titles are stored literally. Deadlines (deadlineDay, deadlineWithTime, deadlineRemindAt) are true due dates, kept separate from planned work: any of them sends the whole update through Local REST PATCH /tasks/:id (needed), the app's deadline path. Changing a deadline clears its reminder unless a new one is given; a deadline that is today can move dueDay to today and clear dueWithTime and the reminder, as saving the deadline dialog does. The result then reports the stored schedule and deadline.",
       "title": "Update task",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
@@ -222,8 +222,24 @@
           "tagIds": { "type": "array", "items": { "type": "string" } },
           "dueDay": { "type": ["string", "null"] },
           "plannedAt": { "type": ["integer", "null"] },
-          "dueWithTime": { "type": ["integer", "null"] }
+          "dueWithTime": { "type": ["integer", "null"] },
+          "deadlineDay": { "type": ["string", "null"], "description": "A true deadline day, YYYY-MM-DD, separate from planned work. Mutually exclusive with deadlineWithTime." },
+          "deadlineWithTime": { "type": ["integer", "null"], "description": "A true deadline with a time, in milliseconds." },
+          "deadlineRemindAt": { "type": ["integer", "null"], "description": "Deadline reminder time, in milliseconds; null clears only the reminder." }
         }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "updated": { "type": "boolean" },
+          "via": { "type": "string" },
+          "deadlineDay": { "type": ["string", "null"] },
+          "deadlineWithTime": { "type": ["number", "null"] },
+          "deadlineRemindAt": { "type": ["number", "null"] },
+          "dueDay": { "type": ["string", "null"] },
+          "dueWithTime": { "type": ["number", "null"] }
+        },
+        "required": ["updated"]
       }
     },
     {

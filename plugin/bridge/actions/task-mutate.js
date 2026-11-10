@@ -13,6 +13,11 @@ async function taskUpdate(payload) {
   if (!payload.taskId) {
     throw typedError("INVALID_REQUEST", "taskId is required", false);
   }
+  if (["deadlineDay", "deadlineWithTime", "deadlineRemindAt"].some((key) => key in payload)) {
+    // The MCP server sends deadline edits to Local REST; a plain plugin update
+    // would skip the app's deadline planning.
+    throw typedError("UNSUPPORTED_ACTION", "Deadlines need Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.", false);
+  }
   const updates = { ...payload };
   delete updates.taskId;
   const input = {};

@@ -121,6 +121,10 @@ func (r *Router) Call(ctx context.Context, req domain.Request) (domain.Response,
 		}
 		return r.createWithRepeat(ctx, req)
 	}
+	// A deadline edit goes, whole, through the app's deadline-aware REST path.
+	if req.Action == "task.update" && hasDeadline(req.Payload) {
+		return r.updateWithDeadline(ctx, req)
+	}
 	// Status and capabilities describe both adapters, so the router answers
 	// them itself with bounded probes. bridge.health stays plugin-only.
 	switch req.Action {

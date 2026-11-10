@@ -63,4 +63,8 @@
     <question>get_status answers isReady:false. Which field tells an agent whether only one of the configured adapters failed, so REST-routed tools may still work?</question>
     <answer>readiness</answer>
   </qa_pair>
+  <qa_pair>
+    <question>A user's report is due Friday, but they plan to work on it Wednesday. Which update_task argument records the Friday due date without moving the planned work?</question>
+    <answer>deadlineDay</answer>
+  </qa_pair>
 </evaluation>

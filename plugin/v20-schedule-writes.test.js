@@ -125,3 +125,41 @@ test("create with subtasks gives subtasks no tags or project of their own", asyn
   assert.deepEqual(Object.keys(child).sort(), ["isIgnoreShortSyntax", "notes", "parentId", "timeEstimate", "title"]);
   assert.equal(child.timeEstimate, 30 * 60000);
 });
+
+test("schedule cleanup never touches true deadlines (#27)", async () => {
+  const deadlineFields = ["deadlineDay", "deadlineWithTime", "deadlineRemindAt"];
+  const runs = [
+    await runBoth("task.clearScheduleForDay", { date: "2026-11-12", clearDueDay: true }),
+    await runBoth("task.planToday", { taskIds: ["fx-deadline-day"] }),
+    await runBoth("task.planToday", { taskIds: ["fx-deadline-day"], unplan: true }),
+    await runBoth("task.bulkReschedule", { updates: [{ taskId: "fx-deadline-day", dueDay: "2026-11-10" }] }),
+  ];
+  for (const both of runs) {
+    for (const side of [both.modular, both.packaged]) {
+      for (const call of writes(side.calls)) {
+        for (const field of deadlineFields) assert.equal(field in call.args[1], false, `${call.method} wrote ${field}`);
+      }
+      assert.equal(side.state.active.get("fx-deadline-day").deadlineDay, "2026-11-12");
+    }
+  }
+});
+
+test("deadline edits are refused by both plugin projections (#27)", async () => {
+  const both = await runBoth("task.update", { taskId: "fx-deadline-day", deadlineDay: "2026-11-13" });
+  for (const side of [both.modular, both.packaged]) {
+    assert.equal(side.error.code, "UNSUPPORTED_ACTION");
+    assert.deepEqual(writes(side.calls), []);
+  }
+});
+
+test("compact summaries show deadlines next to the schedule (#27)", async () => {
+  // A deadline is not a schedule: the task stays unscheduled and shows its deadline.
+  const both = await runBoth("task.findUnscheduledActive", {});
+  for (const side of [both.modular, both.packaged]) {
+    const task = side.result.tasks.find((t) => t.id === "fx-deadline-day");
+    assert.equal(task.deadlineDay, "2026-11-12");
+    assert.equal(task.deadlineWithTime, null);
+    assert.equal(task.scheduleKind, "none");
+  }
+  assert.deepEqual(both.modular.result, both.packaged.result);
+});

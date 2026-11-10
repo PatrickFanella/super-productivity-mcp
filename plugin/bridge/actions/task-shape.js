@@ -81,6 +81,8 @@ function compactTaskSummary(task) {
     plannedAt: schedule.at,
     scheduleKind: schedule.kind,
     scheduledDay: schedule.day,
+    deadlineDay: task.deadlineDay ?? null,
+    deadlineWithTime: task.deadlineWithTime ?? null,
     timeEstimate: task.timeEstimate,
     isDone: !!task.isDone,
     isArchived: !!task.isArchived,

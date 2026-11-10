@@ -51,6 +51,7 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | `restore_task` | `POST /tasks/:id/restore` | Go server | `UNSUPPORTED_ACTION`; no fallback. |
 | `get_task_recurrences` | `GET /task-repeat-cfgs` | Go server | Plugin reads `PluginAPI.getAppState()`. |
 | `get_task_recurrence` | `GET /tasks/:id`, then `GET /task-repeat-cfgs/:id` | Go server | Plugin reads `PluginAPI.getAppState()`. |
+| `update_task` with a deadline field | `PATCH /tasks/:id` with the whole update | Go server | `UNSUPPORTED_ACTION`: a plain plugin update would skip the app's deadline planning. |
 | `create_task` with `repeat` | `GET /status`, plugin create, then `POST /task-repeat-cfgs` | Go server | `UNSUPPORTED_ACTION` before anything is created, unless `SP_MCP_RECURRENCE_ROUTE=plugin`. |
 | `set_task_recurrence` | `POST /task-repeat-cfgs` | Go server | `UNSUPPORTED_ACTION`, unless `SP_MCP_RECURRENCE_ROUTE=plugin`. |
 | `update_task_recurrence` | `GET /tasks/:id`, then `PATCH /task-repeat-cfgs/:id` | Go server | Same. |
@@ -66,6 +67,15 @@ live-tracking through SuperSync (`TRACKING_ON_OTHER_DEVICE`) unless the call
 passes `takeover: true`; `get_current_task` shows that session as
 `trackingOnOtherDevice`. Starting a parent tracks its first unfinished
 subtask, and `trackedTaskId` says which.
+
+Deadlines (`deadlineDay`, `deadlineWithTime`, `deadlineRemindAt`) are true
+due dates, separate from planned work. An `update_task` call with any of them
+is validated as a whole and sent as one `PATCH /tasks/:id`, never split. The
+app then applies the deadline dialog's rules: a changed deadline drops its old
+reminder unless a new one is given, and a deadline that is today can move
+`dueDay` to today and clear `dueWithTime` and its reminder. Schedule tools
+(`clear_schedule_for_day`, `plan_tasks_for_today`, the bulk tools) never touch
+deadlines.
 
 Time logging needs a date. Without one, the MCP server asks the plugin for
 the app's logical day, which follows its start-of-next-day setting; if the

@@ -107,6 +107,14 @@ func (r *Router) RESTError() error { return r.restErr }
 
 // Call delivers req through the adapter its action is routed to.
 func (r *Router) Call(ctx context.Context, req domain.Request) (domain.Response, error) {
+	// Status and capabilities describe both adapters, so the router answers
+	// them itself with bounded probes. bridge.health stays plugin-only.
+	switch req.Action {
+	case "bridge.status":
+		return domain.Response{Result: r.status(ctx)}, nil
+	case "bridge.capabilities":
+		return domain.Response{Result: r.capabilities(ctx)}, nil
+	}
 	if rt, ok := restRoutes[req.Action]; ok && !(r.legacyRecurrence && legacyRecurrenceActions[req.Action]) {
 		if r.restErr != nil {
 			return domain.Response{}, r.restErr

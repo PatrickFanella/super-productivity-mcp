@@ -288,7 +288,9 @@ test("counter.list returns plugin scalar counters, not simple counters", async (
   }
 });
 
-test("baseline gap (#26): capabilities list registered actions, not runtime availability", async () => {
+// The Go router answers bridge_capabilities itself and adds per-operation
+// availability (#26); the plugin's own answer stays the registered surface.
+test("plugin capabilities list registered actions", async () => {
   const both = await runBoth("bridge.capabilities", {});
   for (const side of [both.modular, both.packaged]) {
     assert.ok(side.result.supportedActions.includes("task.restore"), "restore is listed although it cannot run");

@@ -1384,7 +1384,7 @@
     {
       "mcpName": "bridge_health",
       "action": "bridge.health",
-      "description": "Check if the SP plugin bridge is healthy and responding",
+      "description": "Check if the plugin bridge (file IPC) is healthy and responding. It does not check Local REST; get_status reports both.",
       "title": "Check bridge health",
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
       "inputSchema": { "type": "object" }
@@ -1400,7 +1400,7 @@
     {
       "mcpName": "get_status",
       "action": "bridge.status",
-      "description": "Reports whether Super Productivity and the plugin bridge are ready, and which access scopes this server grants. Returns no task data. Reports isReady:false instead of failing when the bridge does not answer.",
+      "description": "Reports whether each adapter is ready (plugin: the plugin bridge; localRest: Super Productivity's Local REST API, when configured), and which access scopes this server grants. readiness is ready when every configured adapter answered, partial when only some did, unavailable when none did; isReady is true only for ready. Each probe is bounded, so a stalled plugin cannot stall this answer. Returns no task data and reports isReady:false instead of failing.",
       "title": "Check status",
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
       "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
@@ -1408,6 +1408,9 @@
         "type": "object",
         "properties": {
           "isReady": { "type": "boolean" },
+          "readiness": { "type": "string", "enum": ["ready", "partial", "unavailable"] },
+          "plugin": { "type": "object" },
+          "localRest": { "type": "object" },
           "grantedScopes": { "type": "array", "items": { "type": "string" } }
         },
         "required": ["isReady", "grantedScopes"]
@@ -1424,10 +1427,20 @@
     {
       "mcpName": "bridge_capabilities",
       "action": "bridge.capabilities",
-      "description": "Get the SP plugin bridge capabilities and supported actions",
+      "description": "List the registered actions (supportedActions, the catalog surface) and, per action in operations, which adapter it uses on this runtime, whether that adapter answered, and known limitations such as fields stock v20 cannot write. adapters shows plugin and Local REST readiness. A registered action is not necessarily available.",
       "title": "Get bridge capabilities",
       "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
-      "inputSchema": { "type": "object" }
+      "inputSchema": { "type": "object" },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "supportedActions": { "type": "array", "items": { "type": "string" } },
+          "operations": { "type": "object" },
+          "adapters": { "type": "object" },
+          "protocolVersion": { "type": "string" }
+        },
+        "required": ["supportedActions", "operations", "adapters"]
+      }
     },
     {
       "action": "task.dayContext",

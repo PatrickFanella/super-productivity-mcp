@@ -59,4 +59,8 @@
     <question>An agent wants to keep a task on Thursday but remove its 14:00 start time without losing the day. Which update_task argument, set to null, drops the time while dueDay keeps the day?</question>
     <answer>dueWithTime</answer>
   </qa_pair>
+  <qa_pair>
+    <question>get_status answers isReady:false. Which field tells an agent whether only one of the configured adapters failed, so REST-routed tools may still work?</question>
+    <answer>readiness</answer>
+  </qa_pair>
 </evaluation>

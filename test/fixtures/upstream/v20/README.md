@@ -86,7 +86,7 @@ from v20, not a regression; the issue that fixes it updates the test.
 | Create with repeat | Creates the task, then reports `recurrenceError`. | Attach through REST. | #24 |
 | Time logging | Fixed in #28: the Go server calls `POST`/`PUT /tasks/:id/time`; without REST both plugin projections refuse. Before: add time patched `timeSpent` only. | `POST`/`PUT /tasks/:id/time` update the day. | #28 |
 | Worklog | Fixed in #29: counts leaf work once (90 min), includes archived work with `includeArchived:true`, and reports `coverage`. Before: 180 min, archived work skipped. | Count leaf work once. | #29 |
-| Capabilities | Lists every registered action, including ones that cannot run. | Report runtime availability. | #26 |
+| Capabilities | Fixed in #26: the Go router adds per-operation adapter, availability and limitations, and `get_status` reports each adapter. The plugin's own list is still the registered surface. | Report runtime availability. | #26 |
 
 Both projections already return the whole 128-task inventory, and
 `allowDoneFallback` marks a task done without archiving it.

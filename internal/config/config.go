@@ -42,7 +42,15 @@ type Config struct {
 	LocalRESTAllowRemote bool
 	// LocalRESTTimeout bounds one request (SP_LOCAL_REST_TIMEOUT); 0 = default.
 	LocalRESTTimeout time.Duration
+
+	// RecurrenceRoute is SP_MCP_RECURRENCE_ROUTE. RecurrenceRoutePlugin sends
+	// recurrence writes to the plugin's repeat-config dispatch, which only a
+	// patched app allows; anything else uses Local REST.
+	RecurrenceRoute string
 }
+
+// RecurrenceRoutePlugin selects the legacy plugin path for recurrence writes.
+const RecurrenceRoutePlugin = "plugin"
 
 func Load() Config {
 	base := os.Getenv("SP_MCP_DATA_DIR")
@@ -110,6 +118,8 @@ func Load() Config {
 		LocalRESTToken:       strings.TrimSpace(os.Getenv("SP_LOCAL_REST_TOKEN")),
 		LocalRESTAllowRemote: allowRemote,
 		LocalRESTTimeout:     restTimeout,
+
+		RecurrenceRoute: strings.ToLower(strings.TrimSpace(os.Getenv("SP_MCP_RECURRENCE_ROUTE"))),
 	}
 }
 

@@ -69,11 +69,14 @@ Evidence includes failed catalog checks or handler/catalog mismatch errors.
 Evidence includes missing recurrence tools, unsupported actions, or unexpected
 confirmation dialogs.
 
-- Require `set_task_recurrence`, `update_task_recurrence`, and
-  `delete_task_recurrence` in `tools/list`.
-- Require the matching bridge capabilities.
-- Use recurrence actions only with the patched Super Productivity build.
-- For noninteractive updates, omit
-  `isAskToUpdateAllTaskInstances` or pass `false`; `true` intentionally opens a
-  confirmation dialog.
-- Verify `repeatCfgId`, `dueDay`, and `plannedAt` from a fresh task read.
+- Require `set_task_recurrence`, `update_task_recurrence`,
+  `delete_task_recurrence`, `get_task_recurrences` and `get_task_recurrence`
+  in `tools/list`.
+- On stock v20, recurrence writes need Local REST (`SP_LOCAL_REST_URL` and
+  `SP_LOCAL_REST_TOKEN`). `UNSUPPORTED_ACTION` means it is not configured.
+- `UNSUPPORTED_FIELD` means the request used a field v20 cannot write; nothing
+  changed. `get_task_recurrence` lists the writable fields per adapter.
+- `SP_MCP_RECURRENCE_ROUTE=plugin` selects the old plugin path, for a patched
+  build only. There, omit `isAskToUpdateAllTaskInstances` or pass `false` for
+  noninteractive updates; `true` opens a confirmation dialog.
+- Verify the result with `get_task_recurrence` and a fresh task read.

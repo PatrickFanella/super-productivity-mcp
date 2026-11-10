@@ -23,6 +23,7 @@ Set these in the MCP client's environment for `sp-mcp`, next to
 | `SUPER_PRODUCTIVITY_REST_URL` | No | Alias used when `SP_LOCAL_REST_URL` is unset. |
 | `SP_LOCAL_REST_TOKEN` | With v20 | Access token, sent as `Authorization: Bearer <token>`. |
 | `SP_LOCAL_REST_TIMEOUT` | No | Per-request timeout, default `20s`. |
+| `SP_MCP_RECURRENCE_ROUTE` | No | `plugin` sends recurrence writes to the plugin's repeat-config dispatch instead of REST. Stock v20 refuses that dispatch; use it only on a patched build that allows it. |
 | `SP_LOCAL_REST_ALLOW_REMOTE` | No | Set to `1` to allow a host other than `127.0.0.1` or `localhost`, for example through a tunnel you set up. The app itself listens only on `127.0.0.1`. |
 
 The URL is used as written. An older URL such as `http://127.0.0.1:4767/api`
@@ -50,6 +51,9 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | `restore_task` | `POST /tasks/:id/restore` | Go server | `UNSUPPORTED_ACTION`; no fallback. |
 | `get_task_recurrences` | `GET /task-repeat-cfgs` | Go server | Plugin reads `PluginAPI.getAppState()`. |
 | `get_task_recurrence` | `GET /tasks/:id`, then `GET /task-repeat-cfgs/:id` | Go server | Plugin reads `PluginAPI.getAppState()`. |
+| `set_task_recurrence` | `POST /task-repeat-cfgs` | Go server | `UNSUPPORTED_ACTION`, unless `SP_MCP_RECURRENCE_ROUTE=plugin`. |
+| `update_task_recurrence` | `GET /tasks/:id`, then `PATCH /task-repeat-cfgs/:id` | Go server | Same. |
+| `delete_task_recurrence` | `GET /tasks/:id`, then `DELETE /task-repeat-cfgs/:id` | Go server | Same. |
 | `start_task` | `POST /tasks/:id/start` | Modular plugin only | Plugin writes `currentTimestamp`. |
 | `stop_task` | `POST /task-control/stop` | Modular plugin only | Plugin clears `currentTimestamp`. |
 | `get_current_task` | `GET /task-control/current` | Modular plugin only | Plugin scans tasks for `currentTimestamp`. |
@@ -57,6 +61,12 @@ is not rewritten; stock v20 answers it with "connection refused" or
 "Modular plugin only" rows read `SP_LOCAL_REST_URL` from the plugin's own
 process, which the installed packaged plugin does not do. Roadmap issue #16
 moves them to the Go server.
+
+Recurrence writes accept only the fields stock v20 can write: `quickSetting`,
+`startDate`, `repeatCycle`, `repeatEvery`, the weekdays (those three with
+`quickSetting: "CUSTOM"`), `isPaused` and `skipOverdue`. Any other field fails
+with `UNSUPPORTED_FIELD` before a request is sent. Deleting a recurrence keeps
+its tasks.
 
 Recurrence reads include paused configs. Their `writableFields` result names
 the fields a schedule edit can change on each adapter; on stock v20 the plugin

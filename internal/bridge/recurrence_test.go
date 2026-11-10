@@ -40,10 +40,12 @@ func loadRepeatFixture(t *testing.T) repeatFixture {
 
 // repeatServer fakes the stock-v20 repeat-config and task read routes.
 type repeatServer struct {
-	mu    sync.Mutex
-	cfgs  []map[string]any
-	tasks map[string]map[string]any
-	paths []string
+	mu     sync.Mutex
+	cfgs   []map[string]any
+	tasks  map[string]map[string]any
+	paths  []string
+	writes int
+	bodies []map[string]any
 }
 
 func (s *repeatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -82,9 +84,121 @@ func (s *repeatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fail(404, "TASK_NOT_FOUND")
+	case r.Method == http.MethodPost && len(parts) == 1 && parts[0] == "task-repeat-cfgs":
+		s.writes++
+		body := s.readBody(r)
+		if !s.validWrite(w, body, true, nil) {
+			return
+		}
+		taskID, _ := body["taskId"].(string)
+		task, found := s.tasks[taskID]
+		if !found {
+			fail(404, "TASK_NOT_FOUND")
+			return
+		}
+		cfg := map[string]any{"id": "fx-created-cfg", "projectId": "fixture-project-alpha"}
+		for k, v := range body {
+			if k != "taskId" {
+				cfg[k] = v
+			}
+		}
+		s.cfgs = append(s.cfgs, cfg)
+		task["repeatCfgId"] = "fx-created-cfg"
+		w.WriteHeader(201)
+		ok(cfg)
+	case r.Method == http.MethodPatch && len(parts) == 2 && parts[0] == "task-repeat-cfgs":
+		s.writes++
+		cfg := s.cfg(parts[1])
+		if cfg == nil {
+			fail(404, "REPEAT_CFG_NOT_FOUND")
+			return
+		}
+		body := s.readBody(r)
+		if !s.validWrite(w, body, false, cfg) {
+			return
+		}
+		for k, v := range body {
+			cfg[k] = v
+		}
+		ok(cfg)
+	case r.Method == http.MethodDelete && len(parts) == 2 && parts[0] == "task-repeat-cfgs":
+		s.writes++
+		if s.cfg(parts[1]) == nil {
+			fail(404, "REPEAT_CFG_NOT_FOUND")
+			return
+		}
+		kept := s.cfgs[:0]
+		for _, c := range s.cfgs {
+			if c["id"] != parts[1] {
+				kept = append(kept, c)
+			}
+		}
+		s.cfgs = kept
+		// The app keeps the tasks; they no longer repeat.
+		for _, task := range s.tasks {
+			if task["repeatCfgId"] == parts[1] {
+				task["repeatCfgId"] = nil
+			}
+		}
+		ok(map[string]any{"deleted": true, "id": parts[1]})
 	default:
 		fail(404, "NOT_FOUND")
 	}
+}
+
+func (s *repeatServer) readBody(r *http.Request) map[string]any {
+	var body map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	s.bodies = append(s.bodies, body)
+	return body
+}
+
+func (s *repeatServer) cfg(id string) map[string]any {
+	for _, c := range s.cfgs {
+		if c["id"] == id {
+			return c
+		}
+	}
+	return nil
+}
+
+// validWrite applies the pinned v20 rules for repeat-config bodies.
+func (s *repeatServer) validWrite(w http.ResponseWriter, body map[string]any, creating bool, _ map[string]any) bool {
+	reply := func(code string) bool {
+		w.WriteHeader(400)
+		_, _ = io.WriteString(w, `{"ok":false,"error":{"code":"`+code+`","message":"`+code+`"}}`)
+		return false
+	}
+	allowed := map[string]bool{}
+	for _, f := range restRecurrenceWritableFields {
+		allowed[f] = true
+	}
+	if creating {
+		allowed["taskId"] = true
+	}
+	for k := range body {
+		if !allowed[k] {
+			return reply("UNSUPPORTED_FIELD")
+		}
+	}
+	qs, hasQS := body["quickSetting"].(string)
+	schedule := false
+	custom := false
+	for k := range body {
+		switch k {
+		case "startDate", "quickSetting":
+			schedule = true
+		case "repeatCycle", "repeatEvery", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday":
+			schedule, custom = true, true
+		}
+	}
+	if !creating && schedule && !hasQS {
+		return reply("INVALID_INPUT")
+	}
+	if custom && qs != "CUSTOM" {
+		return reply("INVALID_INPUT")
+	}
+	return true
 }
 
 func newRepeatServer(t *testing.T) (*repeatServer, *Router) {
@@ -93,6 +207,8 @@ func newRepeatServer(t *testing.T) (*repeatServer, *Router) {
 	s := &repeatServer{cfgs: fx.RepeatCfgs, tasks: map[string]map[string]any{
 		"fx-recurring": {"id": "fx-recurring", "repeatCfgId": "fx-repeat-weekly-custom"},
 		"fx-day-today": {"id": "fx-day-today", "repeatCfgId": nil},
+		"fx-paused":    {"id": "fx-paused", "repeatCfgId": "fx-repeat-paused"},
+		"fx-daily":     {"id": "fx-daily", "repeatCfgId": "fx-repeat-daily"},
 	}}
 	srv := httptest.NewServer(s)
 	t.Cleanup(srv.Close)

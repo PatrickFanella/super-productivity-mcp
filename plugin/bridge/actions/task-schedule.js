@@ -1,6 +1,6 @@
 const { typedError } = require("../errors");
 const { dayRangeMs, findTask, getTasksBySource, isLocalDateString, localDateStr, valueOf } = require("./task-common");
-const { compactTaskSummary, hasSuspiciousDatesOrEstimates } = require("./task-shape");
+const { compactTaskSummary, hasSuspiciousDatesOrEstimates, taskSchedule } = require("./task-shape");
 const { taskBulkUpdateCore } = require("./task-mutate");
 
 async function taskClearScheduleForDay(payload) {
@@ -34,17 +34,19 @@ async function taskScheduleHealth(payload) {
   const includeDone = valueOf(payload, "includeDone", "include_done") === true;
   const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
   const oversizedNotesThreshold = Number(valueOf(payload, "oversizedNotesThreshold", "oversized_notes_threshold") ?? 4000);
-  const [start, end] = dayRangeMs(date);
-  const [staleStart] = dayRangeMs(staleBeforeDate);
   const tasks = (await getTasksBySource(includeArchived ? "all" : "active"))
     .filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived));
+  const scheduled = tasks.map((task) => ({ task, schedule: taskSchedule(task) }));
+  const where = (test) => scheduled.filter(({ task, schedule }) => test(schedule, task)).map(({ task }) => task);
 
   const lists = {
-    plannedToday: tasks.filter((task) => task.plannedAt != null && task.plannedAt >= start && task.plannedAt < end),
-    overdue: tasks.filter((task) => task.dueDay != null && task.dueDay < date),
-    unscheduledActiveTopLevel: tasks.filter((task) => !task.parentId && !task.plannedAt && !task.dueDay),
-    stalePlanned: tasks.filter((task) => task.plannedAt != null && task.plannedAt < staleStart),
-    staleDue: tasks.filter((task) => task.dueDay != null && task.dueDay < staleBeforeDate),
+    // Timed and day-only work scheduled on date.
+    plannedToday: where((s) => s.day === date),
+    overdue: where((s) => s.day != null && s.day < date),
+    unscheduledActiveTopLevel: where((s, task) => !task.parentId && s.kind === "none"),
+    stalePlanned: where((s) => s.kind === "timed" && s.day < staleBeforeDate),
+    // staleDue keeps its meaning: any valid dueDay before the cutoff.
+    staleDue: where((s, task) => isLocalDateString(task.dueDay) && task.dueDay < staleBeforeDate),
     missingEstimate: tasks.filter((task) => !Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) <= 0),
     oversizedNotes: tasks.filter((task) => String(task.notes || "").length > oversizedNotesThreshold),
     recurringGenerated: tasks.filter((task) => !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle)),
@@ -63,18 +65,22 @@ async function taskScheduleRange(payload) {
   if (!isLocalDateString(endDate)) throw typedError("INVALID_REQUEST", "endDate must be YYYY-MM-DD", false);
   const includeDone = valueOf(payload, "includeDone", "include_done") === true;
   const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
-  const [startMs] = dayRangeMs(startDate);
-  const [, endMs] = dayRangeMs(endDate);
-  const tasks = (await getTasksBySource(includeArchived ? "all" : "active"))
+  const entries = (await getTasksBySource(includeArchived ? "all" : "active"))
     .filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived))
-    .filter((task) => task.plannedAt != null && task.plannedAt >= startMs && task.plannedAt < endMs)
-    .sort((a, b) => Number(a.plannedAt || 0) - Number(b.plannedAt || 0) || String(a.title || "").localeCompare(String(b.title || "")));
+    .map((task) => ({ task, schedule: taskSchedule(task) }))
+    .filter(({ schedule }) => schedule.day != null && schedule.day >= startDate && schedule.day <= endDate)
+    // Each day lists timed work by time, then day-only work by title.
+    .sort((a, b) => compareScheduled(a, b));
   const byDate = new Map(localDateRange(startDate, endDate).map((date) => [date, []]));
-  for (const task of tasks) {
-    const date = localDateStr(new Date(task.plannedAt));
-    if (byDate.has(date)) byDate.get(date).push(compactTaskSummary(task));
+  for (const { task, schedule } of entries) {
+    if (byDate.has(schedule.day)) byDate.get(schedule.day).push(compactTaskSummary(task));
   }
   return { startDate, endDate, days: [...byDate.entries()].map(([date, dayTasks]) => ({ date, tasks: dayTasks })) };
+}
+
+function compareScheduled(a, b) {
+  const timedFirst = (a.schedule.at == null) - (b.schedule.at == null);
+  return timedFirst || Number(a.schedule.at || 0) - Number(b.schedule.at || 0) || String(a.task.title || "").localeCompare(String(b.task.title || ""));
 }
 
 async function taskFindStaleSchedule(payload) {
@@ -85,10 +91,13 @@ async function taskFindStaleSchedule(payload) {
   const includePlannedAt = valueOf(payload, "includePlannedAt", "include_planned_at") !== false;
   const includeCompleted = valueOf(payload, "includeCompleted", "include_completed") === true;
   const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
-  const [beforeMs] = dayRangeMs(beforeDate);
   const tasks = (await getTasksBySource(includeArchived ? "all" : "active"))
     .filter((task) => (includeCompleted || !task.isDone) && (includeArchived || !task.isArchived))
-    .map((task) => ({ task, staleDueDay: includeDueDay && task.dueDay != null && task.dueDay < beforeDate, stalePlannedAt: includePlannedAt && task.plannedAt != null && task.plannedAt < beforeMs }))
+    .map((task) => {
+      const schedule = taskSchedule(task);
+      const stale = schedule.day != null && schedule.day < beforeDate;
+      return { task, staleDueDay: includeDueDay && isLocalDateString(task.dueDay) && task.dueDay < beforeDate, stalePlannedAt: includePlannedAt && stale && schedule.kind === "timed" };
+    })
     .filter((entry) => entry.staleDueDay || entry.stalePlannedAt)
     .map((entry) => ({ ...compactTaskSummary(entry.task), staleDueDay: entry.staleDueDay, stalePlannedAt: entry.stalePlannedAt }));
   return { beforeDate, tasks };
@@ -105,7 +114,7 @@ async function taskFindUnscheduledActive(payload) {
   const excludeTagIds = valueOf(payload, "excludeTagIds", "exclude_tag_ids") || [];
   const tasks = (await getTasksBySource("active"))
     .filter((task) => !task.isDone && !task.isArchived)
-    .filter((task) => task.plannedAt == null && task.dueDay == null)
+    .filter((task) => taskSchedule(task).kind === "none")
     .filter((task) => !topLevelOnly || !task.parentId)
     .filter((task) => !missingEstimateOnly || !Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) <= 0)
     .filter((task) => !missingDueDateOnly || !task.dueDay)

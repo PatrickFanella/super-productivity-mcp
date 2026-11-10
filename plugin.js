@@ -414,14 +414,12 @@
     if (valueOf(payload, 'parentsOnly', 'parents_only')) tasks = tasks.filter((t) => !t.parentId);
     if (payload.overdue) {
       const today = localDateStr(new Date());
-      tasks = tasks.filter((t) => t.dueDay != null && t.dueDay < today);
+      tasks = tasks.filter((t) => { const day = taskSchedule(t).day; return day != null && day < today; });
     }
-    if (payload.unscheduled) tasks = tasks.filter((t) => !t.dueDay && !t.dueWithTime);
+    if (payload.unscheduled) tasks = tasks.filter((t) => taskSchedule(t).kind === 'none');
     if (payload.plannedForToday) {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const end = start + 86400000;
-      tasks = tasks.filter((t) => t.plannedAt != null && t.plannedAt >= start && t.plannedAt < end);
+      const today = localDateStr(new Date());
+      tasks = tasks.filter((t) => taskSchedule(t).day === today);
     }
     if (valueOf(payload, 'recurringOnly', 'recurring_only')) tasks = tasks.filter((t) => !!(t.repeatCfgId || t.recurrenceRule || t.repeatCycle));
     if (valueOf(payload, 'includeSynthetic', 'include_synthetic')) tasks = await withSyntheticTaskFields(tasks);
@@ -468,6 +466,7 @@
       noteLength: String(task.notes || '').length,
       subtaskCount: Array.isArray(task.subTaskIds) ? task.subTaskIds.length : tasks.filter((candidate) => candidate.parentId === task.id).length,
       isRecurring: !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle),
+    }, scheduleFields(task), {
       parentTitle: task.parentId ? (byId.get(task.parentId) || {}).title : undefined,
       projectTitle: task.projectId ? (projectById.get(task.projectId) || {}).title || (projectById.get(task.projectId) || {}).name : undefined,
     }));
@@ -488,8 +487,9 @@
   }
 
   function compareTaskField(a, b, field) {
-    const av = a[field];
-    const bv = b[field];
+    // plannedAt sorts by the normalized time, so v20 dueWithTime tasks sort too.
+    const av = field === 'plannedAt' ? taskSchedule(a).at : a[field];
+    const bv = field === 'plannedAt' ? taskSchedule(b).at : b[field];
     if (av == null && bv == null) return String(a.title || '').localeCompare(String(b.title || ''));
     if (av == null) return 1;
     if (bv == null) return -1;
@@ -952,15 +952,16 @@
     const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
     const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
     const oversizedNotesThreshold = Number(valueOf(payload, 'oversizedNotesThreshold', 'oversized_notes_threshold') == null ? 4000 : valueOf(payload, 'oversizedNotesThreshold', 'oversized_notes_threshold'));
-    const range = dayRangeMs(date);
-    const staleRange = dayRangeMs(staleBeforeDate);
     const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active')).filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived));
+    const scheduled = tasks.map((task) => ({ task, schedule: taskSchedule(task) }));
+    const where = (test) => scheduled.filter((e) => test(e.schedule, e.task)).map((e) => e.task);
     const lists = {
-      plannedToday: tasks.filter((task) => task.plannedAt != null && task.plannedAt >= range[0] && task.plannedAt < range[1]),
-      overdue: tasks.filter((task) => task.dueDay != null && task.dueDay < date),
-      unscheduledActiveTopLevel: tasks.filter((task) => !task.parentId && !task.plannedAt && !task.dueDay),
-      stalePlanned: tasks.filter((task) => task.plannedAt != null && task.plannedAt < staleRange[0]),
-      staleDue: tasks.filter((task) => task.dueDay != null && task.dueDay < staleBeforeDate),
+      plannedToday: where((s) => s.day === date),
+      overdue: where((s) => s.day != null && s.day < date),
+      unscheduledActiveTopLevel: where((s, task) => !task.parentId && s.kind === 'none'),
+      stalePlanned: where((s) => s.kind === 'timed' && s.day < staleBeforeDate),
+      // staleDue keeps its meaning: any valid dueDay before the cutoff.
+    staleDue: where((s, task) => isLocalDateString(task.dueDay) && task.dueDay < staleBeforeDate),
       missingEstimate: tasks.filter((task) => !Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) <= 0),
       oversizedNotes: tasks.filter((task) => String(task.notes || '').length > oversizedNotesThreshold),
       recurringGenerated: tasks.filter((task) => !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle)),
@@ -979,18 +980,22 @@
     if (!isLocalDateString(endDate)) throw typedError('INVALID_REQUEST', 'endDate must be YYYY-MM-DD', false);
     const includeDone = valueOf(payload, 'includeDone', 'include_done') === true;
     const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
-    const startMs = dayRangeMs(startDate)[0];
-    const endMs = dayRangeMs(endDate)[1];
-    const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active'))
+    const entries = (await getTasksBySource(includeArchived ? 'all' : 'active'))
       .filter((task) => (includeDone || !task.isDone) && (includeArchived || !task.isArchived))
-      .filter((task) => task.plannedAt != null && task.plannedAt >= startMs && task.plannedAt < endMs)
-      .sort((a, b) => Number(a.plannedAt || 0) - Number(b.plannedAt || 0) || String(a.title || '').localeCompare(String(b.title || '')));
+      .map((task) => ({ task, schedule: taskSchedule(task) }))
+      .filter((e) => e.schedule.day != null && e.schedule.day >= startDate && e.schedule.day <= endDate)
+      .sort(compareScheduled);
     const byDate = new Map(localDateRange(startDate, endDate).map((date) => [date, []]));
-    for (const task of tasks) {
-      const date = localDateStr(new Date(task.plannedAt));
-      if (byDate.has(date)) byDate.get(date).push(compactTaskSummary(task));
+    for (const e of entries) {
+      if (byDate.has(e.schedule.day)) byDate.get(e.schedule.day).push(compactTaskSummary(e.task));
     }
     return { startDate, endDate, days: Array.from(byDate.entries()).map((pair) => ({ date: pair[0], tasks: pair[1] })) };
+  }
+
+  // Each day lists timed work by time, then day-only work by title.
+  function compareScheduled(a, b) {
+    const timedFirst = (a.schedule.at == null) - (b.schedule.at == null);
+    return timedFirst || Number(a.schedule.at || 0) - Number(b.schedule.at || 0) || String(a.task.title || '').localeCompare(String(b.task.title || ''));
   }
 
   async function taskFindStaleSchedule(payload) {
@@ -1001,10 +1006,13 @@
     const includePlannedAt = valueOf(payload, 'includePlannedAt', 'include_planned_at') !== false;
     const includeCompleted = valueOf(payload, 'includeCompleted', 'include_completed') === true;
     const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
-    const beforeMs = dayRangeMs(beforeDate)[0];
     const tasks = (await getTasksBySource(includeArchived ? 'all' : 'active'))
       .filter((task) => (includeCompleted || !task.isDone) && (includeArchived || !task.isArchived))
-      .map((task) => ({ task, staleDueDay: includeDueDay && task.dueDay != null && task.dueDay < beforeDate, stalePlannedAt: includePlannedAt && task.plannedAt != null && task.plannedAt < beforeMs }))
+      .map((task) => {
+        const schedule = taskSchedule(task);
+        const stale = schedule.day != null && schedule.day < beforeDate;
+        return { task, staleDueDay: includeDueDay && isLocalDateString(task.dueDay) && task.dueDay < beforeDate, stalePlannedAt: includePlannedAt && stale && schedule.kind === 'timed' };
+      })
       .filter((entry) => entry.staleDueDay || entry.stalePlannedAt)
       .map((entry) => Object.assign(compactTaskSummary(entry.task), { staleDueDay: entry.staleDueDay, stalePlannedAt: entry.stalePlannedAt }));
     return { beforeDate, tasks };
@@ -1021,7 +1029,7 @@
     const excludeTagIds = valueOf(payload, 'excludeTagIds', 'exclude_tag_ids') || [];
     const tasks = (await getTasksBySource('active'))
       .filter((task) => !task.isDone && !task.isArchived)
-      .filter((task) => task.plannedAt == null && task.dueDay == null)
+      .filter((task) => taskSchedule(task).kind === 'none')
       .filter((task) => !topLevelOnly || !task.parentId)
       .filter((task) => !missingEstimateOnly || !Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) <= 0)
       .filter((task) => !missingDueDateOnly || !task.dueDay)
@@ -1095,14 +1103,39 @@
     return result;
   }
 
+  // Mirrors taskSchedule in plugin/bridge/actions/task-shape.js: dueWithTime,
+  // then legacy plannedAt, then dueDay. A day-only task never gets a time.
+  function validTimestamp(value) {
+    if (value == null || value === '' || typeof value === 'boolean') return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  function taskSchedule(task) {
+    const dueWithTime = validTimestamp(task.dueWithTime);
+    if (dueWithTime != null) return { kind: 'timed', at: dueWithTime, day: localDateStr(new Date(dueWithTime)), source: 'dueWithTime' };
+    const plannedAt = validTimestamp(task.plannedAt);
+    if (plannedAt != null) return { kind: 'timed', at: plannedAt, day: localDateStr(new Date(plannedAt)), source: 'plannedAt' };
+    if (isLocalDateString(task.dueDay)) return { kind: 'day', at: null, day: task.dueDay, source: 'dueDay' };
+    return { kind: 'none', at: null, day: null, source: null };
+  }
+  function scheduleFields(task) {
+    const schedule = taskSchedule(task);
+    return { scheduleKind: schedule.kind, scheduledDay: schedule.day, scheduledAt: schedule.at };
+  }
+  // plannedAt stays as a compatibility field: the normalized time of a timed
+  // task, null for day-only and unscheduled tasks.
   function compactTaskSummary(task) {
-    return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, plannedAt: task.plannedAt, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
+    const schedule = taskSchedule(task);
+    return { id: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId, dueDay: task.dueDay, dueWithTime: task.dueWithTime == null ? null : task.dueWithTime, plannedAt: schedule.at, scheduleKind: schedule.kind, scheduledDay: schedule.day, timeEstimate: task.timeEstimate, isDone: !!task.isDone, isArchived: !!task.isArchived, notesLength: String(task.notes || '').length };
   }
   function hasSuspiciousDatesOrEstimates(task) {
     const tenYears = Date.now() + 10 * 365 * 86400000;
     const oneYearMs = 365 * 86400000;
     if (task.dueDay != null && !isLocalDateString(task.dueDay)) return true;
-    if (task.plannedAt != null && (!Number.isFinite(Number(task.plannedAt)) || Number(task.plannedAt) < 0 || Number(task.plannedAt) > tenYears)) return true;
+    for (const field of ['plannedAt', 'dueWithTime']) {
+      const value = task[field];
+      if (value != null && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > tenYears)) return true;
+    }
     if (task.timeEstimate != null && (!Number.isFinite(Number(task.timeEstimate)) || Number(task.timeEstimate) < 0 || Number(task.timeEstimate) > oneYearMs)) return true;
     return false;
   }

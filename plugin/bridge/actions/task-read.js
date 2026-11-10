@@ -1,6 +1,6 @@
 const { typedError } = require("../errors");
-const { findTask, getTasksBySource, localDateStr, startOfTodayMs, valueOf } = require("./task-common");
-const { pickFields, sortAndPageTasks, withSyntheticTaskFields } = require("./task-shape");
+const { findTask, getTasksBySource, localDateStr, valueOf } = require("./task-common");
+const { pickFields, sortAndPageTasks, taskSchedule, withSyntheticTaskFields } = require("./task-shape");
 
 async function taskList(payload) {
   payload = payload || {};
@@ -37,15 +37,17 @@ async function taskList(payload) {
   }
   if (payload?.overdue) {
     const today = localDateStr(new Date());
-    tasks = tasks.filter((task) => task.dueDay != null && task.dueDay < today);
+    tasks = tasks.filter((task) => {
+      const { day } = taskSchedule(task);
+      return day != null && day < today;
+    });
   }
   if (payload?.unscheduled) {
-    tasks = tasks.filter((task) => !task.dueDay && !task.dueWithTime);
+    tasks = tasks.filter((task) => taskSchedule(task).kind === "none");
   }
   if (payload?.plannedForToday) {
-    const start = startOfTodayMs();
-    const end = start + 86400000;
-    tasks = tasks.filter((task) => task.plannedAt != null && task.plannedAt >= start && task.plannedAt < end);
+    const today = localDateStr(new Date());
+    tasks = tasks.filter((task) => taskSchedule(task).day === today);
   }
   if (valueOf(payload, "recurringOnly", "recurring_only")) {
     tasks = tasks.filter((task) => !!(task.repeatCfgId || task.recurrenceRule || task.repeatCycle));

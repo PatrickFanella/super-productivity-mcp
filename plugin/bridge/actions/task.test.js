@@ -358,7 +358,8 @@ test("task.scheduleHealth returns cleanup counts and concise lists", async () =>
 
   assert.equal(out.counts.plannedToday, 1);
   assert.equal(out.counts.overdue, 2);
-  assert.equal(out.counts.unscheduledActiveTopLevel, 1);
+  // "bad" has no valid schedule field, so it is unscheduled as well as suspicious.
+  assert.equal(out.counts.unscheduledActiveTopLevel, 2);
   assert.equal(out.counts.stalePlanned, 1);
   assert.equal(out.counts.staleDue, 1);
   assert.equal(out.counts.missingEstimate, 1);

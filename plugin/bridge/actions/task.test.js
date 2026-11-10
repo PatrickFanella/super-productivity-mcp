@@ -500,28 +500,27 @@ test("task.archive never calls REST from the plugin, even when its env names a U
   else process.env.SP_LOCAL_REST_URL = oldUrl;
 });
 
-test("task.restore requires and uses configured local REST endpoint", async () => {
+test("task.restore is unavailable in the plugin and never calls REST from it", async () => {
+  // Restore is delivered by the Go server (internal/bridge).
   const oldUrl = process.env.SP_LOCAL_REST_URL;
   const oldFetch = global.fetch;
-  delete process.env.SP_LOCAL_REST_URL;
-  delete process.env.SUPER_PRODUCTIVITY_REST_URL;
-
-  await assert.rejects(taskActions["task.restore"]({ task_id: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
-
-  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3219/api/";
-  let received;
-  global.fetch = async (url, options) => {
-    received = { url, options };
+  process.env.SP_LOCAL_REST_URL = "http://127.0.0.1:3876";
+  let fetched = false;
+  global.fetch = async () => {
+    fetched = true;
     return { ok: true, status: 200, text: async () => "" };
   };
+  const updates = [];
+  global.PluginAPI = { getTasks: async () => [], updateTask: async (...args) => updates.push(args) };
 
-  assert.deepEqual(await taskActions["task.restore"]({ taskId: "task-1" }), { restored: true, via: "localRest" });
-  assert.equal(received.url, "http://127.0.0.1:3219/api/tasks/task-1/restore");
-  assert.equal(received.options.method, "POST");
+  await assert.rejects(taskActions["task.restore"]({ task_id: "task-1" }), (err) => err.code === "UNSUPPORTED_ACTION");
+  await assert.rejects(taskActions["task.restore"]({}), (err) => err.code === "INVALID_REQUEST");
+  assert.equal(fetched, false);
+  assert.deepEqual(updates, [], "restore never substitutes uncompleting the task");
 
+  global.fetch = oldFetch;
   if (oldUrl === undefined) delete process.env.SP_LOCAL_REST_URL;
   else process.env.SP_LOCAL_REST_URL = oldUrl;
-  global.fetch = oldFetch;
 });
 
 test("task start/stop/current prefer configured local REST", async () => {

@@ -4,6 +4,8 @@ const { findTask, getTasksBySource, isLocalDateString, startOfTodayMs, valueOf }
 
 const ARCHIVE_UNAVAILABLE_MESSAGE =
   "True archive needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. Pass allowDoneFallback:true only if marking the task done is acceptable.";
+const RESTORE_UNAVAILABLE_MESSAGE =
+  "Restore needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. There is no plugin fallback.";
 const ARCHIVE_FALLBACK_NOTE = "Local REST is not configured; explicit allowDoneFallback marked the task done instead of archiving it";
 
 async function taskUpdate(payload) {
@@ -45,8 +47,9 @@ async function taskArchive(payload) {
 async function taskRestore(payload) {
   const taskId = valueOf(payload || {}, "taskId", "task_id");
   if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
-  await localRest.restoreTask(taskId);
-  return { restored: true, via: "localRest" };
+  // The MCP server restores through Local REST itself when it is configured;
+  // the plugin API has no restore, so there is no fallback here.
+  throw typedError("UNSUPPORTED_ACTION", RESTORE_UNAVAILABLE_MESSAGE, false);
 }
 
 async function taskDelete(payload) {

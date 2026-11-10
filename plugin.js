@@ -809,7 +809,8 @@
   async function taskRestore(payload) {
     const taskId = valueOf(payload || {}, 'taskId', 'task_id');
     if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
-    throw typedError('UNSUPPORTED_ACTION', 'Restore requires the modular bridge with SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL.', false);
+    // The MCP server restores through Local REST itself when it is configured.
+    throw typedError('UNSUPPORTED_ACTION', 'Restore needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. There is no plugin fallback.', false);
   }
   async function taskReorder(payload) {
     if (typeof PluginAPI.reorderTasks !== 'function') return { reordered: false, note: 'reorderTasks not supported by this plugin runtime' };

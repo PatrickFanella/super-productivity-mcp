@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -274,4 +275,100 @@ func serveOne(t *testing.T, s *mcpadapter.Server, line string) string {
 		t.Fatalf("reply %q: %v", out.String(), err)
 	}
 	return out.String()
+}
+
+// archiveStore is a stateful fake of the app's archive and restore routes.
+type archiveStore struct {
+	mu       sync.Mutex
+	active   map[string]bool
+	archived map[string]bool
+}
+
+func (s *archiveStore) handler(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 3 || parts[0] != "tasks" || r.Method != http.MethodPost {
+		w.WriteHeader(404)
+		_, _ = io.WriteString(w, `{"ok":false,"error":{"code":"NOT_FOUND","message":"Route not found"}}`)
+		return
+	}
+	id := parts[1]
+	switch {
+	case parts[2] == "archive" && s.active[id]:
+		delete(s.active, id)
+		s.archived[id] = true
+		_, _ = io.WriteString(w, `{"ok":true,"data":{"id":"`+id+`","archived":true}}`)
+	case parts[2] == "restore" && s.archived[id]:
+		delete(s.archived, id)
+		s.active[id] = true
+		_, _ = io.WriteString(w, `{"ok":true,"data":{"id":"`+id+`","title":"Fixture task","isDone":true}}`)
+	default:
+		w.WriteHeader(404)
+		_, _ = io.WriteString(w, `{"ok":false,"error":{"code":"TASK_NOT_FOUND","message":"Task not found"}}`)
+	}
+}
+
+func TestArchiveThenRestoreMovesTheTaskBack(t *testing.T) {
+	store := &archiveStore{active: map[string]bool{"fx-day-overdue": true}, archived: map[string]bool{}}
+	srv := httptest.NewServer(http.HandlerFunc(store.handler))
+	defer srv.Close()
+	r := NewWith(restClient(t, srv.URL), unavailablePlugin(t))
+
+	if _, err := r.Call(context.Background(), archive("fx-day-overdue")); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	if !store.archived["fx-day-overdue"] || store.active["fx-day-overdue"] {
+		t.Fatalf("after archive: %+v", store)
+	}
+	resp, err := r.Call(context.Background(), domain.Request{Action: "task.restore", Payload: map[string]any{"task_id": "fx-day-overdue"}})
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if resp.Result["restored"] != true || resp.Result["via"] != "localRest" || resp.Result["taskId"] != "fx-day-overdue" {
+		t.Fatalf("restore result %#v", resp.Result)
+	}
+	if store.archived["fx-day-overdue"] || !store.active["fx-day-overdue"] {
+		t.Fatalf("after restore: %+v", store)
+	}
+	// Restoring again finds nothing in the archive and changes nothing.
+	_, err = r.Call(context.Background(), domain.Request{Action: "task.restore", Payload: map[string]any{"taskId": "fx-day-overdue"}})
+	if got := code(t, err); got != "TASK_NOT_FOUND" {
+		t.Fatalf("second restore code = %s", got)
+	}
+}
+
+func TestRestoreFailuresStayExplicit(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"other task returned", 200, `{"ok":true,"data":{"id":"other"}}`, localrest.CodeOutcomeUnknown},
+		{"null data", 200, `{"ok":true,"data":null}`, localrest.CodeOutcomeUnknown},
+		{"renderer timeout", 504, `{"ok":false,"error":{"code":"RENDERER_TIMEOUT","message":"Renderer request timed out"}}`, localrest.CodeOutcomeUnknown},
+		{"route missing", 404, `{"ok":false,"error":{"code":"NOT_FOUND","message":"Route not found"}}`, localrest.CodeUnsupportedRoute},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := newRESTServer(t, c.status, c.body)
+			r := NewWith(restClient(t, srv.URL), unavailablePlugin(t))
+			_, err := r.Call(context.Background(), domain.Request{Action: "task.restore", Payload: map[string]any{"taskId": "x"}})
+			if got := code(t, err); got != c.want {
+				t.Fatalf("code = %s, want %s", got, c.want)
+			}
+		})
+	}
+}
+
+func TestRestoreUsesPluginWhenRESTIsNotConfigured(t *testing.T) {
+	plugin := &fakePlugin{result: map[string]any{}}
+	r := NewWith(nil, func() (domain.Bridge, error) { return plugin, nil })
+	if _, err := r.Call(context.Background(), domain.Request{Action: "task.restore", Payload: map[string]any{"taskId": "x"}}); err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if len(plugin.calls) != 1 || plugin.calls[0].Action != "task.restore" {
+		t.Fatalf("plugin calls %#v", plugin.calls)
+	}
 }

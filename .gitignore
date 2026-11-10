@@ -39,3 +39,7 @@ go.work.sum
 dist/
 super-productivity-mcp-plugin-v*.zip
 /sp-quick-add
+
+# Locally built binaries (go build -o sp-mcp ./cmd/sp-mcp)
+/sp-mcp
+/sp-quick-add

@@ -349,3 +349,24 @@ test("focus state needs Local REST in both plugin projections (#31)", async () =
   assert.equal(both.modular.error.code, "UNSUPPORTED_ACTION");
   assert.deepEqual(writes(both.modular.calls), []);
 });
+
+test("habit history reads full simple counters with units in both projections (#32)", async () => {
+  const all = await runBoth("counter.history", {});
+  const ranged = await runBoth("counter.history", { counterId: "fx-counter-water", startDate: "2026-11-08", endDate: "2026-11-09" });
+  const missing = await runBoth("counter.history", { counterId: "fx-missing" });
+  const older = await runBoth("counter.history", {}, { getAllSimpleCounters: undefined });
+  const setDay = await runBoth("counter.setDay", { counterId: "fx-counter-water", value: 3 });
+  assert.deepEqual(all.modular.result, all.packaged.result);
+  const byId = new Map(all.modular.result.counters.map((c) => [c.id, c]));
+  assert.equal(byId.get("fx-counter-water").unit, "count");
+  assert.equal(byId.get("fx-counter-reading").unit, "ms");
+  assert.equal(byId.get("fx-counter-stretch").isEnabled, false, "disabled counters are listed");
+  for (const side of ["modular", "packaged"]) {
+    assert.deepEqual(ranged[side].result.counters[0].days, [{ date: "2026-11-08", value: 8 }, { date: "2026-11-09", value: 2 }]);
+    assert.equal(missing[side].error.code, "SIMPLE_COUNTER_NOT_FOUND");
+    // An older host is a limitation, never an empty success.
+    assert.equal(older[side].error.code, "UNSUPPORTED_ACTION");
+    assert.equal(setDay[side].error.code, "UNSUPPORTED_ACTION");
+    assert.deepEqual(writes(setDay[side].calls), []);
+  }
+});

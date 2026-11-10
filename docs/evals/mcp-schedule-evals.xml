@@ -71,4 +71,8 @@
     <question>Before suggesting a break, an agent checks whether the user is in a Pomodoro work session. Which read-only tool reports the focus timer, and what state value means a work timer is running?</question>
     <answer>get_focus_state; work-running</answer>
   </qa_pair>
+  <qa_pair>
+    <question>A user forgot to record yesterday's six glasses of water. Which tool sets that day's habit value without adding to it, so repeating the call is safe?</question>
+    <answer>set_habit_value_for_day</answer>
+  </qa_pair>
 </evaluation>

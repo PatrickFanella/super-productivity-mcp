@@ -1755,6 +1755,30 @@ async function attachGitea(payload = {}) {
 }
 
 
+  function habitHistory(counters, payload) {
+    const counterId = payload && (payload.counterId || payload.counter_id || payload.id);
+    const startDate = payload && (payload.startDate || payload.start_date);
+    const endDate = payload && (payload.endDate || payload.end_date);
+    for (const pair of [['startDate', startDate], ['endDate', endDate]]) {
+      if (pair[1] != null && !isLocalDateString(pair[1])) throw typedError('INVALID_REQUEST', pair[0] + ' must be a valid YYYY-MM-DD date', false);
+    }
+    if (startDate && endDate && endDate < startDate) throw typedError('INVALID_REQUEST', 'endDate must not be before startDate', false);
+    let list = Array.isArray(counters) ? counters : [];
+    if (counterId) {
+      list = list.filter((counter) => counter && counter.id === counterId);
+      if (list.length === 0) throw typedError('SIMPLE_COUNTER_NOT_FOUND', 'Simple counter ' + counterId + ' not found', false);
+    }
+    return list.map((counter) => ({
+      id: counter.id, title: counter.title, type: counter.type,
+      unit: counter.type === 'StopWatch' ? 'ms' : 'count',
+      isEnabled: !!counter.isEnabled, isOn: !!counter.isOn,
+      days: Object.entries(counter.countOnDay || {})
+        .filter((pair) => (!startDate || pair[0] >= startDate) && (!endDate || pair[0] <= endDate))
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map((pair) => ({ date: pair[0], value: Number(pair[1]) })),
+    }));
+  }
+
   const handlers = {
     'task.create': taskCreate,
     'task.createWithSubtasks': taskCreateWithSubtasks,
@@ -1854,6 +1878,12 @@ async function attachGitea(payload = {}) {
       await PluginAPI.deleteCounter(id);
       return { id, deleted: true };
     },
+    // Mirrors system.js: full simple-counter models per day; day writes need REST.
+    'counter.history': async (payload) => {
+      if (typeof PluginAPI.getAllSimpleCounters !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.getAllSimpleCounters is not available in this Super Productivity runtime', false);
+      return { counters: habitHistory(await PluginAPI.getAllSimpleCounters(), payload), via: 'plugin' };
+    },
+    'counter.setDay': async () => { throw typedError('UNSUPPORTED_ACTION', 'Setting a habit\'s value for a day needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false); },
     'bridge.health': async () => ({ ok: true, message: 'bridge alive', dirs }),
     'bridge.checkConnection': async () => ({ ok: true, message: 'bridge alive', dirs }),
     'bridge.status': async () => ({ isReady: true, pluginVersion: '0.1.0', protocolVersion: PROTOCOL_VERSION }),

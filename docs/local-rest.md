@@ -59,6 +59,8 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | `start_task` | `GET /tasks/:id`, `GET /status`, `POST /task-control/current` | Go server | Plugin calls `PluginAPI.startTracking`. |
 | `stop_task` | `GET /status`, `POST /task-control/stop` | Go server | Plugin calls `PluginAPI.stopTracking`. |
 | `get_focus_state` | `GET /focus` | Go server | `UNSUPPORTED_ACTION`: the plugin API has no focus read. Read-only; there are no focus controls. |
+| `get_habit_history` | `GET /simple-counters` | Plugin first (`getAllSimpleCounters`); Go server when the plugin lacks it | `getAllSimpleCounters`. |
+| `set_habit_value_for_day` | `PUT /simple-counters/:id/value` | Go server | `UNSUPPORTED_ACTION`. |
 | `get_current_task` | `GET /status` | Go server | `UNSUPPORTED_ACTION`: the plugin API cannot read the tracked task. |
 | `add_time_to_task` | `GET /tasks/:id`, then `POST /tasks/:id/time` | Go server | `UNSUPPORTED_ACTION`: the plugin API cannot update a day's time record. |
 | `set_task_time_for_day` | `GET /tasks/:id`, then `PUT /tasks/:id/time` | Go server | Same. |

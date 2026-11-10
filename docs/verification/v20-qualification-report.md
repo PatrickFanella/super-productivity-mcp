@@ -17,11 +17,12 @@ Recorded on 2026-11-10.
 
 | Item | Value |
 | --- | --- |
-| Suite commit | `5ede0f5e57cd0fb06ed0937912610baaef1cbee8` (main after #54) |
+| Suite commit | `2ad4ee03bc4166279220c0e954a2c6698df51147` (main after the review fixes, #57–#59) |
 | Local gates | `make verify-release` passed (catalog and doc drift, Go, JS, end-to-end, evals, install profiles, plugin package) |
-| `plugin.js` SHA-256 | `69c3254ce9a6ed6ed0b58d038b07e1642787f554d27377f4c71d442a74be9a47` |
+| `plugin.js` SHA-256 | `4085f2c702505e1ad4bf75cac54c80324a2891152e05320f4a2d4b35a1ac956b` |
 | Plugin ZIP | `super-productivity-mcp-plugin-v0.1.0.zip`; its hash changes with file timestamps, so record the one you install |
-| Hosted CI | Gitea Actions `CI / test` passed on every merged PR head for #14–#32 and #17 |
+| Hosted CI | Gitea Actions `CI / test` passed on every merged PR head (#37–#59) |
+| Review | Three independent reviews of the night's changes (Go routes, JS parity, contract and docs); their findings are fixed in #57, #58 and #59 |
 | Upstream contract | v20.0.0, commit `4db0e11236bc784d3184a9e252930b4bd53df823` (source read, not run) |
 
 What this evidence covers: request shapes, envelope handling, routing,

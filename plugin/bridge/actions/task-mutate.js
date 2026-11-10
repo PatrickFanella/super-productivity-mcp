@@ -260,9 +260,10 @@ async function applyPatches(entries, tasksById, dryRun) {
       if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
       const result = { id: taskId, success: true };
       if (note) result.note = note;
-      const changes = diffTaskPatch(task, patch);
+      // Only fields whose value changes are reported and written.
+      const changes = diffTaskPatch(task, patch).filter((change) => (change.before ?? null) !== change.after);
       if (changes.length) result.changes = changes;
-      if (!dryRun && changes.length) await PluginAPI.updateTask(taskId, patch);
+      if (!dryRun && changes.length) await PluginAPI.updateTask(taskId, Object.fromEntries(changes.map((change) => [change.field, change.after])));
       results.push(result);
     } catch (err) {
       results.push({ id: taskId, success: false, error: err.message || String(err) });

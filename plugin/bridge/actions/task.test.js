@@ -336,9 +336,18 @@ test("task.clearScheduleForDay supports dry-run and clears times with their remi
 
   const changed = await taskActions["task.clearScheduleForDay"]({ date: "2026-05-14", clearDueDay: true });
   assert.equal(changed.changedCount, 2);
+  // Only fields that change are written.
   assert.deepEqual(updates, [
-    { taskId: "planned", data: { dueWithTime: null, remindAt: null, plannedAt: null, dueDay: null } },
+    { taskId: "planned", data: { plannedAt: null, dueDay: null } },
     { taskId: "timed", data: { dueWithTime: null, remindAt: null } },
+  ]);
+
+  // Without clearDueDay a timed task keeps the day as day-only work.
+  updates.length = 0;
+  await taskActions["task.clearScheduleForDay"]({ date: "2026-05-14" });
+  assert.deepEqual(updates, [
+    { taskId: "planned", data: { plannedAt: null } },
+    { taskId: "timed", data: { dueWithTime: null, remindAt: null, dueDay: "2026-05-14" } },
   ]);
 });
 
@@ -392,7 +401,7 @@ test("task.planToday files tasks under the logical Today without inventing a tim
     { id: "c", success: true },
   ]);
   assert.deepEqual(updates, [
-    { taskId: "a", data: { dueDay: "2026-05-14", dueWithTime: null, remindAt: null } },
+    { taskId: "a", data: { dueDay: "2026-05-14" } },
     { taskId: "b", data: { dueDay: "2026-05-14", dueWithTime: null, remindAt: null } },
   ]);
   assert.equal(planned.results[2].note, "already scheduled with a time today");
@@ -400,7 +409,7 @@ test("task.planToday files tasks under the logical Today without inventing a tim
 
   updates.length = 0;
   await taskActions["task.planToday"]({ task_ids: ["b"], unplan: true });
-  assert.deepEqual(updates, [{ taskId: "b", data: { dueDay: null, dueWithTime: null, remindAt: null } }]);
+  assert.deepEqual(updates, [{ taskId: "b", data: { dueWithTime: null, remindAt: null } }]);
 });
 
 test("task.addTag adds tag without replacing existing tags", async () => {
@@ -811,7 +820,7 @@ test("task.autoSchedule dry-runs by default and applies canonical times with con
   const applied = await taskActions["task.autoSchedule"]({ startDate: "2026-05-14", capacityPerDayMinutes: 60, timezone: "local", dryRun: false, confirmApply: true });
   assert.equal(applied.dryRun, false);
   assert.equal(applied.results[0].success, true);
-  assert.deepEqual(updates, [{ taskId: "a", data: { dueWithTime: new Date(2026, 4, 14, 9).getTime(), dueDay: null } }]);
+  assert.deepEqual(updates, [{ taskId: "a", data: { dueWithTime: new Date(2026, 4, 14, 9).getTime() } }]);
 });
 
 test("task.autoSchedule counts existing work, avoids timed slots and does not double-count parents", async () => {
@@ -895,4 +904,41 @@ test("task.update writes canonical schedule fields and keeps titles literal", as
 test("task.get throws typed TASK_NOT_FOUND", async () => {
   global.PluginAPI = { getTasks: async () => [] };
   await assert.rejects(taskActions["task.get"]({ taskId: "missing" }), (err) => err.code === "TASK_NOT_FOUND");
+});
+
+test("task.autoSchedule never schedules a parent whose subtasks are already scheduled", async () => {
+  global.PluginAPI = {
+    getTasks: async () => [
+      { id: "p", title: "Parent", timeEstimate: 120 * 60000, subTaskIds: ["s"] },
+      { id: "s", title: "Sub", parentId: "p", timeEstimate: 120 * 60000, dueDay: "2026-11-12" },
+    ],
+  };
+  for (const rules of [{}, { topLevelOnly: true }]) {
+    const out = await taskActions["task.autoSchedule"]({ startDate: "2026-11-12", capacityPerDayMinutes: 240, timezone: "local", rules });
+    assert.deepEqual(out.updates, []);
+    assert.deepEqual(out.skipped.map((t) => [t.id, t.reason]), [["p", "has_scheduled_subtasks"]]);
+    assert.equal(out.capacity[0].existingMs, 120 * 60000);
+  }
+});
+
+test("task.autoSchedule keeps work inside its day and skips a day whose start does not exist", async () => {
+  const prevTz = process.env.TZ;
+  process.env.TZ = "America/Chicago";
+  try {
+    global.PluginAPI = {
+      getTasks: async () => ["A", "B", "C"].map((id) => ({ id, title: id, timeEstimate: 60 * 60000 })),
+    };
+    const out = await taskActions["task.autoSchedule"]({ startDate: "2026-11-12", endDate: "2026-11-13", workStart: "22:00", capacityPerDayMinutes: 240, timezone: "America/Chicago" });
+    assert.deepEqual(out.updates.map((u) => [u.taskId, u.date, new Date(u.dueWithTime).getDate()]), [["A", "2026-11-12", 12], ["B", "2026-11-12", 12], ["C", "2026-11-13", 13]]);
+    const gap = await taskActions["task.autoSchedule"]({ startDate: "2027-03-14", endDate: "2027-03-15", workStart: "02:30", timezone: "America/Chicago" });
+    assert.deepEqual(gap.skippedDays.map((d) => d.date), ["2027-03-14"]);
+    assert.deepEqual(gap.capacity.map((d) => d.date), ["2027-03-15"]);
+  } finally {
+    process.env.TZ = prevTz;
+  }
+});
+
+test("dates before year 1000 are refused", async () => {
+  global.PluginAPI = { getTasks: async () => [] };
+  await assert.rejects(taskActions["task.scheduleRange"]({ startDate: "0026-11-09" }), { code: "INVALID_REQUEST" });
 });

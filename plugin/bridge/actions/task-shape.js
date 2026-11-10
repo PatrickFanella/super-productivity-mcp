@@ -124,6 +124,8 @@ function localDateStr(date) {
 function isLocalDateString(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
+  // new Date(y, ...) reads years 0-99 as 19xx; the app starts at 1000-01-01.
+  if (year < 1000) return false;
   const date = new Date(0);
   date.setUTCFullYear(year, month - 1, day);
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;

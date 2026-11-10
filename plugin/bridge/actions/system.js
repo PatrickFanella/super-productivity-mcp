@@ -60,7 +60,8 @@ const exported = {
     };
     const type = typeMap[rawType] || "INFO";
     if (typeof PluginAPI.showSnack === "function") {
-      await PluginAPI.showSnack({ message, type });
+      // v20 SnackCfg reads msg; message is kept for older hosts.
+      await PluginAPI.showSnack({ msg: message, message, type });
     } else {
       console.log(`[notification:${type}] ${message}`);
     }

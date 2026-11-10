@@ -5,8 +5,9 @@ const { applyPatches } = require("./task-mutate");
 const { scheduleWrite } = require("./task-schedule-write");
 
 // taskClearScheduleForDay removes the time from tasks timed on date (a
-// calendar day), dismissing their reminders, and with clearDueDay also clears
-// a dueDay equal to date.
+// calendar day), dismissing their reminders; they stay on that day as
+// day-only work. With clearDueDay they, and day-only tasks on date, are
+// unscheduled.
 async function taskClearScheduleForDay(payload) {
   payload = payload || {};
   const date = payload.date;
@@ -22,7 +23,9 @@ async function taskClearScheduleForDay(payload) {
     if (!includeArchived && task.isArchived) continue;
     const schedule = taskSchedule(task);
     let patch = {};
-    if (schedule.kind === "timed" && schedule.day === date) patch = scheduleWrite({ dueWithTime: null }, task);
+    // Without clearDueDay a timed task keeps the day, as day-only work, as the
+    // app's unschedule-but-leave-in-day does; with it the task is unscheduled.
+    if (schedule.kind === "timed" && schedule.day === date) patch = scheduleWrite({ dueWithTime: null, dueDay: clearDueDay ? null : date }, task);
     if (clearDueDay && task.dueDay === date) patch.dueDay = null;
     if (Object.keys(patch).length > 0) entries.push({ taskId: task.id, patch });
   }
@@ -162,6 +165,39 @@ async function taskMakePlannedAt(payload) {
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
+// freeSlot is the first start at or after the day's next free time that does
+// not overlap a busy interval.
+function freeSlot(day, estimateMs) {
+  let start = day.nextMs;
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const [busyStart, busyEnd] of day.busy) {
+      if (start < busyEnd && start + estimateMs > busyStart) {
+        start = busyEnd;
+        moved = true;
+      }
+    }
+  }
+  return start;
+}
+
+// nextDayStartMs is when the calendar day after date starts in timezone.
+function nextDayStartMs(date, timezone) {
+  const [year, month, day] = date.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  const nextDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+  // Midnight itself can fall in a DST gap in a few zones; take the first
+  // minute that exists.
+  for (const time of ["00:00", "01:00", "02:00"]) {
+    try {
+      return resolveZonedWallTime(nextDate, time, timezone, "earlier").ms;
+    } catch (_err) {
+      // try the next hour
+    }
+  }
+  throw typedError("INVALID_REQUEST", `cannot find the start of ${nextDate} in ${timezone}`, false);
+}
+
 function weekdayOf(dateStr) {
   const [year, month, day] = dateStr.split("-").map(Number);
   return WEEKDAY_KEYS[new Date(year, month - 1, day).getDay()];
@@ -196,9 +232,21 @@ async function taskAutoSchedule(payload) {
   const isLeaf = (task) => !parentIds.has(task.id) && !(Array.isArray(task.subTaskIds) && task.subTaskIds.length > 0);
   const estimateOf = (task) => (Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs);
 
-  const days = localDateRange(startDate, endDate)
-    .filter((date) => workingDays.includes(weekdayOf(date)))
-    .map((date) => ({ date, existingMs: 0, plannedMs: 0, busy: [], nextMs: resolveZonedWallTime(date, workStart, timezone, "earlier").ms }));
+  // Each working day runs from workStart until the next calendar day starts.
+  // A day whose workStart the clocks skip (a DST gap) is left out.
+  const days = [];
+  const skippedDays = [];
+  for (const date of localDateRange(startDate, endDate).filter((d) => workingDays.includes(weekdayOf(d)))) {
+    let startMs;
+    try {
+      startMs = resolveZonedWallTime(date, workStart, timezone, "earlier").ms;
+    } catch (err) {
+      if (err.code !== "INVALID_REQUEST" || /time zone/.test(err.message)) throw err;
+      skippedDays.push({ date, reason: "workStart does not exist on this day (daylight saving change)" });
+      continue;
+    }
+    days.push({ date, existingMs: 0, plannedMs: 0, busy: [], nextMs: startMs, endMs: nextDayStartMs(date, timezone) });
+  }
   const dayByDate = new Map(days.map((day) => [day.date, day]));
   // Existing allocations: scheduled leaf tasks on each day.
   for (const task of tasks) {
@@ -220,26 +268,30 @@ async function taskAutoSchedule(payload) {
   const updates = [];
   const skipped = [];
   for (const task of candidates) {
-    if (!topLevelOnly && tasks.some((child) => child.parentId === task.id && candidateIds.has(child.id))) {
-      skipped.push({ ...compactTaskSummary(task), reason: "subtasks_scheduled_instead" });
-      continue;
+    // A parent's estimate is the sum of its subtasks': schedule a parent only
+    // when topLevelOnly asks for it and none of its subtasks is scheduled.
+    if (!isLeaf(task)) {
+      const children = tasks.filter((child) => child.parentId === task.id);
+      if (!topLevelOnly || children.some((child) => taskSchedule(child).kind !== "none")) {
+        const reason = children.some((child) => candidateIds.has(child.id)) && !topLevelOnly ? "subtasks_scheduled_instead" : "has_scheduled_subtasks";
+        skipped.push({ ...compactTaskSummary(task), reason });
+        continue;
+      }
     }
     const estimateMs = estimateOf(task);
-    const day = days.find((candidate) => candidate.existingMs + candidate.plannedMs + estimateMs <= capacityMs);
-    if (!day) {
+    let placed = null;
+    for (const day of days) {
+      if (day.existingMs + day.plannedMs + estimateMs > capacityMs) continue;
+      const start = freeSlot(day, estimateMs);
+      if (start + estimateMs > day.endMs) continue;
+      placed = { day, start };
+      break;
+    }
+    if (!placed) {
       skipped.push({ ...compactTaskSummary(task), reason: "capacity_exhausted" });
       continue;
     }
-    let start = day.nextMs;
-    for (let moved = true; moved; ) {
-      moved = false;
-      for (const [busyStart, busyEnd] of day.busy) {
-        if (start < busyEnd && start + estimateMs > busyStart) {
-          start = busyEnd;
-          moved = true;
-        }
-      }
-    }
+    const { day, start } = placed;
     day.busy.push([start, start + estimateMs]);
     day.nextMs = start + estimateMs;
     day.plannedMs += estimateMs;
@@ -253,6 +305,7 @@ async function taskAutoSchedule(payload) {
     timezone,
     workingDays,
     capacity: days.map((day) => ({ date: day.date, existingMs: day.existingMs, plannedMs: day.plannedMs, capacityMs })),
+    skippedDays,
     updates,
     scheduledCount: updates.length,
     skipped,

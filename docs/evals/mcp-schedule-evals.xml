@@ -51,4 +51,8 @@
     <question>make_planned_at refuses 2026-11-01 01:30 in America/Chicago because that wall time happens twice. Which argument picks one of the two instants?</question>
     <answer>disambiguation</answer>
   </qa_pair>
+  <qa_pair>
+    <question>An agent logged 30 minutes with add_time_to_task, got OUTCOME_UNKNOWN, and now knows the day's total should be exactly one hour. Which tool corrects it safely, even if called twice?</question>
+    <answer>set_task_time_for_day</answer>
+  </qa_pair>
 </evaluation>

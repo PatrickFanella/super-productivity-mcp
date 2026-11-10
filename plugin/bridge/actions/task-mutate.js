@@ -63,14 +63,19 @@ async function taskDelete(payload) {
   return { deleted: true };
 }
 
-async function taskAddTime(payload) {
-  const task = await findTask(payload.taskId);
-  if (!task) {
-    throw typedError("TASK_NOT_FOUND", `Task ${payload.taskId} not found`, false);
-  }
-  const add = Number(payload.timeMs || 0);
-  await PluginAPI.updateTask(payload.taskId, { timeSpent: (task.timeSpent || 0) + add });
-  return { timeSpent: (task.timeSpent || 0) + add };
+// Time logging goes through Local REST (POST/PUT /tasks/:id/time), which the
+// MCP server calls itself. The plugin API has no supported per-day time
+// write: patching timeSpent leaves timeSpentOnDay unchanged and the app
+// recalculates over it, so the plugin refuses instead of writing.
+const TIME_LOGGING_UNAVAILABLE =
+  "Logging time needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN): the plugin API cannot update a day's time record. Nothing was changed.";
+
+async function taskAddTime() {
+  throw typedError("UNSUPPORTED_ACTION", TIME_LOGGING_UNAVAILABLE, false);
+}
+
+async function taskSetTimeForDay() {
+  throw typedError("UNSUPPORTED_ACTION", TIME_LOGGING_UNAVAILABLE, false);
 }
 
 async function validateReorderContext(taskIds, contextId, contextType) {
@@ -306,6 +311,7 @@ async function taskPlanToday(payload) {
 
 const exported = {
   taskAddTime,
+  taskSetTimeForDay,
   taskArchive,
   taskComplete,
   taskBulkComplete,

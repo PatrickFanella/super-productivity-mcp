@@ -24,6 +24,7 @@ module.exports = {
   "task.restore": mutate.taskRestore,
   "task.delete": mutate.taskDelete,
   "task.addTime": mutate.taskAddTime,
+  "task.setTimeForDay": mutate.taskSetTimeForDay,
   "task.reorder": mutate.taskReorder,
   "task.reorderTasks": mutate.taskReorder,
   "task.start": mutate.taskStart,

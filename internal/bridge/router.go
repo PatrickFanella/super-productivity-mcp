@@ -25,9 +25,13 @@ type restRoute func(ctx context.Context, rest *localrest.Client, payload map[str
 // route maps an action to Local REST. needsREST marks actions with no
 // supported plugin path on stock v20: without REST they fail before
 // anything is sent instead of reaching the plugin.
+//
+// needsDay marks actions whose optional date defaults to the app's logical
+// day; the router reads it from the plugin before sending.
 type route struct {
 	rest      restRoute
 	needsREST bool
+	needsDay  bool
 }
 
 // restRoutes are the actions that use Local REST when it is configured.
@@ -38,6 +42,9 @@ var restRoutes = map[string]route{
 	"task.start":   {rest: startTask},
 	"task.stop":    {rest: stopTask},
 	"task.current": {rest: currentTask},
+
+	"task.addTime":       {rest: addTime, needsREST: true, needsDay: true},
+	"task.setTimeForDay": {rest: setTimeForDay, needsREST: true, needsDay: true},
 
 	"task.listRecurrences": {rest: listRecurrences},
 	"task.getRecurrence":   {rest: getRecurrence},
@@ -105,17 +112,26 @@ func (r *Router) Call(ctx context.Context, req domain.Request) (domain.Response,
 			return domain.Response{}, r.restErr
 		}
 		if r.rest != nil {
-			result, err := rt.rest(ctx, r.rest, req.Payload)
+			payload := req.Payload
+			if rt.needsDay && stringArg(payload, "date") == "" {
+				today, err := r.logicalToday(ctx)
+				if err != nil {
+					return domain.Response{}, err
+				}
+				payload = cloneWith(payload, map[string]any{"date": today, dateSourceKey: "app"})
+			}
+			result, err := rt.rest(ctx, r.rest, payload)
 			if err != nil {
 				return domain.Response{}, err
 			}
 			return domain.Response{Result: result}, nil
 		}
 		if rt.needsREST {
-			return domain.Response{}, domain.TypedError{
-				Code:    "UNSUPPORTED_ACTION",
-				Message: "This needs Super Productivity's Local REST API: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN. Only on an app build that allows plugin repeat-config actions, SP_MCP_RECURRENCE_ROUTE=plugin selects the legacy plugin path instead. Nothing was changed.",
+			msg := "This needs Super Productivity's Local REST API: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN. Nothing was changed."
+			if legacyRecurrenceActions[req.Action] {
+				msg += " Only on an app build that allows plugin repeat-config actions, SP_MCP_RECURRENCE_ROUTE=plugin selects the legacy plugin path instead."
 			}
+			return domain.Response{}, domain.TypedError{Code: "UNSUPPORTED_ACTION", Message: msg}
 		}
 	}
 	plugin, err := r.pluginBridge()
@@ -201,4 +217,16 @@ func restoreTask(ctx context.Context, rest *localrest.Client, payload map[string
 		}
 	}
 	return map[string]any{"restored": true, "via": "localRest", "taskId": taskID}, nil
+}
+
+// cloneWith returns a copy of payload with extra keys set.
+func cloneWith(payload map[string]any, extra map[string]any) map[string]any {
+	out := make(map[string]any, len(payload)+len(extra))
+	for k, v := range payload {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }

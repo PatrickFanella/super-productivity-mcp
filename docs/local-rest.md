@@ -57,12 +57,22 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | `start_task` | `GET /tasks/:id`, `GET /status`, `POST /task-control/current` | Go server | Plugin calls `PluginAPI.startTracking`. |
 | `stop_task` | `GET /status`, `POST /task-control/stop` | Go server | Plugin calls `PluginAPI.stopTracking`. |
 | `get_current_task` | `GET /status` | Go server | `UNSUPPORTED_ACTION`: the plugin API cannot read the tracked task. |
+| `add_time_to_task` | `GET /tasks/:id`, then `POST /tasks/:id/time` | Go server | `UNSUPPORTED_ACTION`: the plugin API cannot update a day's time record. |
+| `set_task_time_for_day` | `GET /tasks/:id`, then `PUT /tasks/:id/time` | Go server | Same. |
 
 `start_task` refuses to take tracking over from another device that is
 live-tracking through SuperSync (`TRACKING_ON_OTHER_DEVICE`) unless the call
 passes `takeover: true`; `get_current_task` shows that session as
 `trackingOnOtherDevice`. Starting a parent tracks its first unfinished
 subtask, and `trackedTaskId` says which.
+
+Time logging needs a date. Without one, the MCP server asks the plugin for
+the app's logical day, which follows its start-of-next-day setting; if the
+plugin cannot report it, the call fails with `DAY_CONTEXT_UNAVAILABLE`
+instead of using the host clock. Only leaf tasks take time: a parent's time
+is the sum of its subtasks'. `add_time_to_task` adds and is not safe to
+retry after `OUTCOME_UNKNOWN`; `set_task_time_for_day` sets a day's total and
+is.
 
 Recurrence writes accept only the fields stock v20 can write: `quickSetting`,
 `startDate`, `repeatCycle`, `repeatEvery`, the weekdays (those three with

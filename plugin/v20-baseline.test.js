@@ -207,13 +207,14 @@ test("baseline gap (#24): create with repeat creates the task, then reports recu
   }
 });
 
-test("baseline gap (#28): add time changes the total but not the day's record", async () => {
-  const both = await runBoth("task.addTime", { taskId: "fx-day-today", timeMs: 10 * 60 * 1000 });
-  for (const side of [both.modular, both.packaged]) {
-    assert.equal(side.ok, true);
-    const [write] = writes(side.calls);
-    assert.deepEqual(write.args, ["fx-day-today", { timeSpent: 10 * 60 * 1000 }]);
-    assert.deepEqual(side.state.active.get("fx-day-today").timeSpentOnDay, {});
+test("without Local REST, time logging fails in the plugin and writes nothing (#28)", async () => {
+  for (const action of ["task.addTime", "task.setTimeForDay"]) {
+    const both = await runBoth(action, { taskId: "fx-day-today", timeMs: 10 * 60 * 1000 });
+    assertSameOutcome(both);
+    for (const side of [both.modular, both.packaged]) {
+      assert.equal(side.error.code, "UNSUPPORTED_ACTION");
+      assert.deepEqual(writes(side.calls), [], "never patches timeSpent alone");
+    }
   }
 });
 

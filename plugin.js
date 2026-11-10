@@ -834,13 +834,11 @@
     }
     throw typedError('UNSUPPORTED_ACTION', 'True archive needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. Pass allowDoneFallback:true only if marking the task done is acceptable.', false);
   }
-  async function taskAddTime(payload) {
-    const task = await findTask(payload.taskId);
-    if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + payload.taskId + ' not found', false);
-    const timeSpent = (task.timeSpent || 0) + Number(payload.timeMs || 0);
-    await PluginAPI.updateTask(payload.taskId, { timeSpent });
-    return { timeSpent };
-  }
+  // Time logging goes through Local REST, which the MCP server calls; the
+  // plugin API cannot update a day's record. Mirrors task-mutate.js.
+  const TIME_LOGGING_UNAVAILABLE = 'Logging time needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN): the plugin API cannot update a day\'s time record. Nothing was changed.';
+  async function taskAddTime() { throw typedError('UNSUPPORTED_ACTION', TIME_LOGGING_UNAVAILABLE, false); }
+  async function taskSetTimeForDay() { throw typedError('UNSUPPORTED_ACTION', TIME_LOGGING_UNAVAILABLE, false); }
   async function taskDelete(payload) {
     const taskId = valueOf(payload || {}, 'taskId', 'task_id');
     if (!taskId) throw typedError('INVALID_REQUEST', 'taskId is required', false);
@@ -1577,6 +1575,7 @@ async function attachGitea(payload = {}) {
     'task.restore': taskRestore,
     'task.delete': taskDelete,
     'task.addTime': taskAddTime,
+    'task.setTimeForDay': taskSetTimeForDay,
     'task.reorder': taskReorder,
     'task.reorderTasks': taskReorder,
     'task.start': taskStart,

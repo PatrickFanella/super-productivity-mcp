@@ -84,7 +84,7 @@ from v20, not a regression; the issue that fixes it updates the test.
 | Tracking | Fixed in #16: the Go server uses `/status` and `/task-control`; the plugin uses `startTracking`/`stopTracking`. Before: start wrote `currentTimestamp`, which v20 ignores. | `startTracking` / `POST /task-control/current`. | #16 |
 | Recurrence | Fixed in #22 and #23: the Go server reads and writes `/task-repeat-cfgs`. The plugin's set, update and delete still dispatch actions stock v20 refuses; the router uses them only with `SP_MCP_RECURRENCE_ROUTE=plugin`. | `/task-repeat-cfgs`. | #22, #23 |
 | Create with repeat | Creates the task, then reports `recurrenceError`. | Attach through REST. | #24 |
-| Time logging | Add time changes `timeSpent` only. | `POST`/`PUT /tasks/:id/time` update the day. | #28 |
+| Time logging | Fixed in #28: the Go server calls `POST`/`PUT /tasks/:id/time`; without REST both plugin projections refuse. Before: add time patched `timeSpent` only. | `POST`/`PUT /tasks/:id/time` update the day. | #28 |
 | Worklog | Fixed in #29: counts leaf work once (90 min), includes archived work with `includeArchived:true`, and reports `coverage`. Before: 180 min, archived work skipped. | Count leaf work once. | #29 |
 | Capabilities | Lists every registered action, including ones that cannot run. | Report runtime availability. | #26 |
 

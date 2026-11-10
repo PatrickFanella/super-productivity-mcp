@@ -115,6 +115,7 @@ func (r *Router) status(ctx context.Context) map[string]any {
 
 // operationLimits are short notes on what an operation cannot do.
 var operationLimits = map[string][]string{
+	"task.create":           {"repeat needs Local REST: the task is created first, then the recurrence attached; a failed attach is reported as recurrenceError next to taskId."},
 	"task.archive":          {"Only top-level tasks; subtasks go with their parent.", "Without Local REST it only marks the task done, and only with allowDoneFallback:true."},
 	"task.restore":          {"Needs Local REST; there is no plugin fallback."},
 	"task.setRecurrence":    {"Local REST writes only quickSetting, startDate, repeatCycle, repeatEvery, weekdays, isPaused and skipOverdue; other fields fail with UNSUPPORTED_FIELD."},

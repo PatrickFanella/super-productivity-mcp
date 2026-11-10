@@ -107,6 +107,20 @@ func (r *Router) RESTError() error { return r.restErr }
 
 // Call delivers req through the adapter its action is routed to.
 func (r *Router) Call(ctx context.Context, req domain.Request) (domain.Response, error) {
+	// create_task with repeat attaches the recurrence through REST after the
+	// plugin creates the task; without REST it needs the legacy plugin route.
+	if req.Action == "task.create" && req.Payload["repeat"] != nil && !r.legacyRecurrence {
+		if r.restErr != nil {
+			return domain.Response{}, r.restErr
+		}
+		if r.rest == nil {
+			return domain.Response{}, domain.TypedError{
+				Code:    "UNSUPPORTED_ACTION",
+				Message: "repeat needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN) on stock Super Productivity v20; create the task without repeat, or use SP_MCP_RECURRENCE_ROUTE=plugin on a patched build. Nothing was created.",
+			}
+		}
+		return r.createWithRepeat(ctx, req)
+	}
 	// Status and capabilities describe both adapters, so the router answers
 	// them itself with bounded probes. bridge.health stays plugin-only.
 	switch req.Action {

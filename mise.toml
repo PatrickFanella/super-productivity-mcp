@@ -1,5 +1,5 @@
 [tools]
-go = "1.22"
+go = "1.27"
 
 [settings]
 # Select Go from [tools], not the minimum supported version in go.mod.

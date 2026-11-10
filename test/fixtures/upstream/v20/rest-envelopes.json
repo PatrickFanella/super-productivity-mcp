@@ -1,0 +1,494 @@
+{
+  "meta": {
+    "upstream": {
+      "version": "20.0.0",
+      "commit": "4db0e11236bc784d3184a9e252930b4bd53df823"
+    },
+    "baseUrl": "http://127.0.0.1:3876",
+    "note": "body is the HTTP response body; a string body is sent verbatim."
+  },
+  "responses": {
+    "health": {
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "server": "up",
+          "rendererReady": true
+        }
+      }
+    },
+    "healthRendererNotReady": {
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "server": "up",
+          "rendererReady": false
+        }
+      }
+    },
+    "archiveOk": {
+      "method": "POST",
+      "path": "/tasks/fx-day-overdue/archive",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "id": "fx-day-overdue",
+          "archived": true
+        }
+      }
+    },
+    "archiveSubtask": {
+      "method": "POST",
+      "path": "/tasks/fx-child-1/archive",
+      "status": 400,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_INPUT",
+          "message": "Cannot archive a subtask on its own; archive its parent task, which takes its subtasks with it"
+        }
+      }
+    },
+    "archiveUnknown": {
+      "method": "POST",
+      "path": "/tasks/fx-missing/archive",
+      "status": 404,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "TASK_NOT_FOUND",
+          "message": "Task not found"
+        }
+      }
+    },
+    "restoreOk": {
+      "method": "POST",
+      "path": "/tasks/fx-archived-leaf/restore",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "id": "fx-archived-leaf",
+          "title": "Fixture archived leaf task",
+          "notes": "",
+          "timeEstimate": 0,
+          "timeSpent": 4800000,
+          "timeSpentOnDay": {
+            "2026-11-04": 3600000,
+            "2026-11-05": 1200000
+          },
+          "isDone": true,
+          "doneOn": 1793901600000,
+          "projectId": "fixture-project-alpha",
+          "tagIds": [],
+          "parentId": null,
+          "subTaskIds": [],
+          "created": 1790863200000,
+          "dueDay": null,
+          "dueWithTime": null,
+          "remindAt": null,
+          "repeatCfgId": null
+        }
+      }
+    },
+    "restoreNotArchived": {
+      "method": "POST",
+      "path": "/tasks/fx-day-today/restore",
+      "status": 404,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "TASK_NOT_FOUND",
+          "message": "Task not found in archive"
+        }
+      }
+    },
+    "status": {
+      "method": "GET",
+      "path": "/status",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "currentTask": null,
+          "currentTaskId": null,
+          "taskCount": 128,
+          "trackingOnOtherDevice": null
+        }
+      }
+    },
+    "statusTrackingOnOtherDevice": {
+      "method": "GET",
+      "path": "/status",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "currentTask": null,
+          "currentTaskId": null,
+          "taskCount": 128,
+          "trackingOnOtherDevice": {
+            "taskId": "fx-day-today",
+            "deviceLabel": "Fixture laptop",
+            "sinceTs": 1794233700000
+          }
+        }
+      }
+    },
+    "currentNone": {
+      "method": "GET",
+      "path": "/task-control/current",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": null
+      }
+    },
+    "currentTask": {
+      "method": "GET",
+      "path": "/task-control/current",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "id": "fx-child-1",
+          "title": "Fixture child task one",
+          "notes": "",
+          "timeEstimate": 0,
+          "timeSpent": 2700000,
+          "timeSpentOnDay": {
+            "2026-11-06": 1800000,
+            "2026-11-09": 900000
+          },
+          "isDone": false,
+          "doneOn": null,
+          "projectId": "fixture-project-alpha",
+          "tagIds": [],
+          "parentId": "fx-parent",
+          "subTaskIds": [],
+          "created": 1790863200000,
+          "dueDay": null,
+          "dueWithTime": null,
+          "remindAt": null,
+          "repeatCfgId": null
+        }
+      }
+    },
+    "setCurrent": {
+      "method": "POST",
+      "path": "/task-control/current",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "currentTaskId": "fx-child-1"
+        }
+      }
+    },
+    "stop": {
+      "method": "POST",
+      "path": "/task-control/stop",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "currentTaskId": null
+        }
+      }
+    },
+    "addTime": {
+      "method": "POST",
+      "path": "/tasks/fx-day-today/time",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "id": "fx-day-today",
+          "title": "Fixture day-only task today",
+          "notes": "",
+          "timeEstimate": 1200000,
+          "timeSpent": 1500000,
+          "timeSpentOnDay": {
+            "2026-11-09": 1500000
+          },
+          "isDone": false,
+          "doneOn": null,
+          "projectId": "fixture-project-alpha",
+          "tagIds": [],
+          "parentId": null,
+          "subTaskIds": [],
+          "created": 1790863200000,
+          "dueDay": "2026-11-09",
+          "dueWithTime": null,
+          "remindAt": null,
+          "repeatCfgId": null
+        }
+      }
+    },
+    "addTimeParent": {
+      "method": "POST",
+      "path": "/tasks/fx-parent/time",
+      "status": 400,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_INPUT",
+          "message": "Cannot log time on a task with subtasks; log it on a subtask"
+        }
+      }
+    },
+    "addTimeFuture": {
+      "method": "POST",
+      "path": "/tasks/fx-day-today/time",
+      "status": 400,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_INPUT",
+          "message": "date must not be in the future"
+        }
+      }
+    },
+    "focusNone": {
+      "method": "GET",
+      "path": "/focus",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "mode": "Pomodoro",
+          "cycle": 1,
+          "isSessionDone": false,
+          "timer": null
+        }
+      }
+    },
+    "focusRunning": {
+      "method": "GET",
+      "path": "/focus",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "mode": "Pomodoro",
+          "cycle": 2,
+          "isSessionDone": false,
+          "timer": {
+            "purpose": "work",
+            "status": "running",
+            "isOvertime": false,
+            "isLongBreak": false,
+            "elapsedMs": 600000,
+            "remainingMs": 900000,
+            "durationMs": 1500000
+          }
+        }
+      }
+    },
+    "focusPausedOvertime": {
+      "method": "GET",
+      "path": "/focus",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "mode": "Countdown",
+          "cycle": 1,
+          "isSessionDone": false,
+          "timer": {
+            "purpose": "work",
+            "status": "paused",
+            "isOvertime": true,
+            "isLongBreak": false,
+            "elapsedMs": 1920000,
+            "remainingMs": 0,
+            "durationMs": 1800000
+          }
+        }
+      }
+    },
+    "focusBreakDone": {
+      "method": "GET",
+      "path": "/focus",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "mode": "Pomodoro",
+          "cycle": 3,
+          "isSessionDone": false,
+          "timer": {
+            "purpose": "break",
+            "status": "done",
+            "isOvertime": false,
+            "isLongBreak": false,
+            "elapsedMs": 300000,
+            "remainingMs": 0,
+            "durationMs": 300000
+          }
+        }
+      }
+    },
+    "focusSessionDone": {
+      "method": "GET",
+      "path": "/focus",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "mode": "Flowtime",
+          "cycle": 1,
+          "isSessionDone": true,
+          "timer": null
+        }
+      }
+    },
+    "repeatCfgDelete": {
+      "method": "DELETE",
+      "path": "/task-repeat-cfgs/fx-repeat-daily",
+      "status": 200,
+      "body": {
+        "ok": true,
+        "data": {
+          "deleted": true,
+          "id": "fx-repeat-daily"
+        }
+      }
+    },
+    "repeatCfgUnsupportedField": {
+      "method": "PATCH",
+      "path": "/task-repeat-cfgs/fx-repeat-daily",
+      "status": 400,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "UNSUPPORTED_FIELD",
+          "message": "Field startTime cannot be changed through this endpoint"
+        }
+      }
+    },
+    "repeatCfgNotFound": {
+      "method": "GET",
+      "path": "/task-repeat-cfgs/fx-missing",
+      "status": 404,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "REPEAT_CFG_NOT_FOUND",
+          "message": "Repeat config not found"
+        }
+      }
+    },
+    "unauthorized": {
+      "method": "GET",
+      "path": "/tasks",
+      "status": 401,
+      "headers": {
+        "WWW-Authenticate": "Bearer"
+      },
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "UNAUTHORIZED",
+          "message": "Invalid authorization token. Find the token in Settings → Misc → Access Token."
+        }
+      }
+    },
+    "apiDisabled": {
+      "method": "GET",
+      "path": "/tasks",
+      "status": 503,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "API_DISABLED",
+          "message": "Local REST API is disabled"
+        }
+      }
+    },
+    "appNotReady": {
+      "method": "GET",
+      "path": "/tasks",
+      "status": 503,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "APP_NOT_READY",
+          "message": "Renderer is not ready yet"
+        }
+      }
+    },
+    "tooManyRequests": {
+      "method": "GET",
+      "path": "/tasks",
+      "status": 429,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "TOO_MANY_REQUESTS",
+          "message": "Too many concurrent requests (limit: 50)"
+        }
+      }
+    },
+    "rendererTimeout": {
+      "method": "POST",
+      "path": "/tasks/fx-day-overdue/archive",
+      "status": 504,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "RENDERER_TIMEOUT",
+          "message": "Renderer request timed out"
+        }
+      }
+    },
+    "routeNotFound": {
+      "method": "POST",
+      "path": "/tasks/fx-day-today/unknown",
+      "status": 404,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Route not found"
+        }
+      }
+    },
+    "internalError": {
+      "method": "GET",
+      "path": "/tasks",
+      "status": 500,
+      "body": {
+        "ok": false,
+        "error": {
+          "code": "INTERNAL_ERROR",
+          "message": "Internal error"
+        }
+      }
+    },
+    "malformed": {
+      "method": "POST",
+      "path": "/tasks/fx-day-overdue/archive",
+      "status": 200,
+      "body": "<html>not json</html>"
+    },
+    "successWithoutOk": {
+      "method": "POST",
+      "path": "/tasks/fx-day-overdue/archive",
+      "status": 200,
+      "body": {
+        "data": {
+          "id": "fx-day-overdue",
+          "archived": true
+        }
+      }
+    }
+  }
+}

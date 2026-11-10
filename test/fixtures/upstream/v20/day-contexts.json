@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "upstream": {
+      "version": "20.0.0",
+      "commit": "4db0e11236bc784d3184a9e252930b4bd53df823"
+    },
+    "timeZone": "America/Chicago"
+  },
+  "cases": [
+    {
+      "name": "midday",
+      "now": 1794247200000,
+      "startOfNextDayDiffMs": 0,
+      "todayStr": "2026-11-09"
+    },
+    {
+      "name": "before delayed day start",
+      "now": 1794297600000,
+      "startOfNextDayDiffMs": 14400000,
+      "todayStr": "2026-11-09"
+    },
+    {
+      "name": "after delayed day start",
+      "now": 1794308400000,
+      "startOfNextDayDiffMs": 14400000,
+      "todayStr": "2026-11-10"
+    },
+    {
+      "name": "spring-forward day",
+      "now": 1772989200000,
+      "startOfNextDayDiffMs": 0,
+      "todayStr": "2026-03-08",
+      "calendarDayHours": 23
+    },
+    {
+      "name": "fall-back day",
+      "now": 1793556000000,
+      "startOfNextDayDiffMs": 0,
+      "todayStr": "2026-11-01",
+      "calendarDayHours": 25
+    }
+  ]
+}

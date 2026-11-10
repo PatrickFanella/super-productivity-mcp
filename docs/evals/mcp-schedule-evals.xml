@@ -43,4 +43,8 @@
     <question>A weekly review needs tracked time that includes tasks archived during the week, and must say whether the total is complete. Which get_worklog argument includes archived work, and which result field reports completeness?</question>
     <answer>includeArchived=true; coverage.complete</answer>
   </qa_pair>
+  <qa_pair>
+    <question>Before editing a recurring task's schedule, an agent wants to read its current repeat configuration and see which fields stock v20 lets it change. Which exact MCP tool, given the task's id, answers both?</question>
+    <answer>get_task_recurrence</answer>
+  </qa_pair>
 </evaluation>

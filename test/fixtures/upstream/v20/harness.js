@@ -49,6 +49,7 @@ function clone(value) {
 function createPluginApi(overrides = {}) {
   const fixture = loadFixture("tasks.json");
   const counters = loadFixture("simple-counters.json");
+  const repeat = loadFixture("repeat-cfgs.json");
   const state = {
     active: new Map(fixture.active.map((task) => [task.id, clone(task)])),
     archived: new Map(fixture.archived.map((task) => [task.id, clone(task)])),
@@ -56,6 +57,7 @@ function createPluginApi(overrides = {}) {
     tags: clone(fixture.tags),
     simpleCounters: clone(counters.simpleCounters),
     pluginCounters: clone(counters.pluginCounters),
+    repeatCfgs: new Map(repeat.repeatCfgs.map((cfg) => [cfg.id, clone(cfg)])),
     currentTaskId: null,
     nextId: 1,
   };
@@ -77,6 +79,20 @@ function createPluginApi(overrides = {}) {
     },
     getAllProjects: async () => clone(state.projects),
     getAllTags: async () => clone(state.tags),
+    // getAppState returns entity maps, as PluginBridgeService.getAppState does.
+    getAppState: async () => {
+      record("getAppState");
+      const byId = (items) => Object.fromEntries(items.map((item) => [item.id, clone(item)]));
+      return {
+        tasks: byId([...state.active.values()]),
+        projects: byId(state.projects),
+        tags: byId(state.tags),
+        notes: {},
+        taskRepeatCfgs: byId([...state.repeatCfgs.values()]),
+        simpleCounters: byId(state.simpleCounters),
+        globalConfig: {},
+      };
+    },
     getDayContext: async () => {
       record("getDayContext");
       return clone(fixture.dayContext);

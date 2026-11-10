@@ -775,6 +775,47 @@
     return { repeatCfgId: task.repeatCfgId, deleted: true };
   }
 
+  // Plugin path for get_task_recurrences / get_task_recurrence; the MCP
+  // server reads /task-repeat-cfgs itself when Local REST is configured.
+  // Mirrors plugin/bridge/actions/task-recurrence.js.
+  const REST_WRITABLE_FIELDS = ['quickSetting', 'startDate', 'repeatCycle', 'repeatEvery', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'isPaused', 'skipOverdue'];
+  function recurrenceWritableFields() { return { localRest: REST_WRITABLE_FIELDS.slice(), plugin: [] }; }
+  async function readRepeatCfgs() {
+    if (typeof PluginAPI.getAppState !== 'function') throw typedError('UNSUPPORTED_ACTION', 'Reading recurrences needs Local REST or PluginAPI.getAppState, which this Super Productivity runtime lacks', false);
+    const state = await PluginAPI.getAppState();
+    return (state && state.taskRepeatCfgs) || {};
+  }
+  function projectCfg(cfg, fields) {
+    if (!Array.isArray(fields) || fields.length === 0) return cfg;
+    const out = { id: cfg.id };
+    for (const field of fields) if (Object.prototype.hasOwnProperty.call(cfg, field)) out[field] = cfg[field];
+    return out;
+  }
+  async function taskListRecurrences(payload) {
+    payload = payload || {};
+    const projectId = valueOf(payload, 'projectId', 'project_id');
+    const cfgs = Object.values(await readRepeatCfgs()).filter((cfg) => cfg && (!projectId || cfg.projectId === projectId));
+    return { repeatCfgs: cfgs.map((cfg) => projectCfg(cfg, payload.fields)), via: 'plugin', writableFields: recurrenceWritableFields() };
+  }
+  async function taskGetRecurrence(payload) {
+    payload = payload || {};
+    let repeatCfgId = valueOf(payload, 'repeatCfgId', 'repeat_cfg_id');
+    const taskId = valueOf(payload, 'taskId', 'task_id');
+    if (!repeatCfgId && !taskId) throw typedError('INVALID_REQUEST', 'repeatCfgId or taskId is required', false);
+    const result = { via: 'plugin', writableFields: recurrenceWritableFields() };
+    if (!repeatCfgId) {
+      const task = await findTask(taskId);
+      if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + taskId + ' not found', false);
+      if (!task.repeatCfgId) throw typedError('TASK_NOT_RECURRING', 'Task ' + taskId + ' has no repeatCfgId', false);
+      repeatCfgId = task.repeatCfgId;
+      result.taskId = taskId;
+    }
+    const cfg = (await readRepeatCfgs())[repeatCfgId];
+    if (!cfg) throw typedError('REPEAT_CFG_NOT_FOUND', 'Repeat config ' + repeatCfgId + ' not found', false);
+    result.repeatCfg = projectCfg(cfg, payload.fields);
+    return result;
+  }
+
   async function taskComplete(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: true, doneOn: Date.now() }); return { completed: true }; }
   async function taskUncomplete(payload) { await PluginAPI.updateTask(payload.taskId, { isDone: false, doneOn: null }); return { uncompleted: true }; }
   async function taskArchive(payload) {
@@ -1466,6 +1507,8 @@ async function attachGitea(payload = {}) {
     'task.setRecurrence': taskSetRecurrence,
     'task.updateRecurrence': taskUpdateRecurrence,
     'task.deleteRecurrence': taskDeleteRecurrence,
+    'task.listRecurrences': taskListRecurrences,
+    'task.getRecurrence': taskGetRecurrence,
     'task.complete': taskComplete,
     'task.uncomplete': taskUncomplete,
     'task.archive': taskArchive,

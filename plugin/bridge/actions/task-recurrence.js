@@ -207,6 +207,60 @@ async function taskDeleteRecurrence(payload) {
   return { repeatCfgId: task.repeatCfgId, deleted: true };
 }
 
+// Repeat-config fields stock v20 accepts on POST/PATCH /task-repeat-cfgs.
+// Mirrors restRecurrenceWritableFields in internal/bridge/recurrence.go.
+const REST_WRITABLE_FIELDS = ["quickSetting", "startDate", "repeatCycle", "repeatEvery", ...WEEKDAYS, "isPaused", "skipOverdue"];
+
+function writableFields() {
+  // Stock v20 refuses the plugin's repeat-config dispatches.
+  return { localRest: [...REST_WRITABLE_FIELDS], plugin: [] };
+}
+
+async function readRepeatCfgs() {
+  if (typeof PluginAPI.getAppState !== "function") {
+    throw typedError("UNSUPPORTED_ACTION", "Reading recurrences needs Local REST or PluginAPI.getAppState, which this Super Productivity runtime lacks", false);
+  }
+  const state = await PluginAPI.getAppState();
+  return (state && state.taskRepeatCfgs) || {};
+}
+
+function projectCfg(cfg, fields) {
+  if (!Array.isArray(fields) || fields.length === 0) return cfg;
+  const out = { id: cfg.id };
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(cfg, field)) out[field] = cfg[field];
+  }
+  return out;
+}
+
+// taskListRecurrences is the plugin path for get_task_recurrences; the MCP
+// server uses GET /task-repeat-cfgs instead when Local REST is configured.
+async function taskListRecurrences(payload) {
+  payload = payload || {};
+  const projectId = valueOf(payload, "projectId", "project_id");
+  const cfgs = Object.values(await readRepeatCfgs()).filter((cfg) => cfg && (!projectId || cfg.projectId === projectId));
+  return { repeatCfgs: cfgs.map((cfg) => projectCfg(cfg, payload.fields)), via: "plugin", writableFields: writableFields() };
+}
+
+async function taskGetRecurrence(payload) {
+  payload = payload || {};
+  let repeatCfgId = valueOf(payload, "repeatCfgId", "repeat_cfg_id");
+  const taskId = valueOf(payload, "taskId", "task_id");
+  if (!repeatCfgId && !taskId) throw typedError("INVALID_REQUEST", "repeatCfgId or taskId is required", false);
+  const result = { via: "plugin", writableFields: writableFields() };
+  if (!repeatCfgId) {
+    const task = await findTask(taskId);
+    if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
+    if (!task.repeatCfgId) throw typedError("TASK_NOT_RECURRING", `Task ${taskId} has no repeatCfgId`, false);
+    repeatCfgId = task.repeatCfgId;
+    result.taskId = taskId;
+  }
+  const cfg = (await readRepeatCfgs())[repeatCfgId];
+  if (!cfg) throw typedError("REPEAT_CFG_NOT_FOUND", `Repeat config ${repeatCfgId} not found`, false);
+  result.repeatCfg = projectCfg(cfg, payload.fields);
+  return result;
+}
+
 const REPEAT_ARG_CYCLES = ["daily", "weekly", "monthly", "yearly"];
 const REPEAT_ARG_WEEKDAYS = { mon: "monday", tue: "tuesday", wed: "wednesday", thu: "thursday", fri: "friday", sat: "saturday", sun: "sunday" };
 const REPEAT_EVERY_MAX = 99;
@@ -255,6 +309,8 @@ function buildRepeatRecurrence(repeat, { startDate, startTime }) {
 module.exports = {
   buildRepeatRecurrence,
   taskDeleteRecurrence,
+  taskGetRecurrence,
+  taskListRecurrences,
   taskSetRecurrence,
   taskUpdateRecurrence,
 };

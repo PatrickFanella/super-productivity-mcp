@@ -16,6 +16,8 @@ module.exports = {
   "task.setRecurrence": recurrence.taskSetRecurrence,
   "task.updateRecurrence": recurrence.taskUpdateRecurrence,
   "task.deleteRecurrence": recurrence.taskDeleteRecurrence,
+  "task.listRecurrences": recurrence.taskListRecurrences,
+  "task.getRecurrence": recurrence.taskGetRecurrence,
   "task.complete": mutate.taskComplete,
   "task.uncomplete": mutate.taskUncomplete,
   "task.archive": mutate.taskArchive,

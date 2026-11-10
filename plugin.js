@@ -33,9 +33,16 @@
         const path = require('path');
         const app = 'super-productivity-mcp';
         const tmpRoot = '/tmp';
-        const homeCandidates = fs.existsSync('/home')
-          ? fs.readdirSync('/home').map((u) => path.join('/home', u))
-          : [];
+        // The running user's home comes first: macOS keeps homes under /Users,
+        // so scanning /home alone falls through to /tmp there.
+        const userHome = require('os').homedir();
+        const homeCandidates = userHome ? [userHome] : [];
+        if (fs.existsSync('/home')) {
+          for (const u of fs.readdirSync('/home')) {
+            const home = path.join('/home', u);
+            if (homeCandidates.indexOf(home) === -1) homeCandidates.push(home);
+          }
+        }
         const candidates = [];
         for (const home of homeCandidates) {
           candidates.push(path.join(home, '.local', 'share', app));

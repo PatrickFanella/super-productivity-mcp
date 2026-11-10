@@ -90,3 +90,8 @@ from v20, not a regression; the issue that fixes it updates the test.
 
 Both projections already return the whole 128-task inventory, and
 `allowDoneFallback` marks a task done without archiving it.
+
+Schedule writes (#21) were not in this baseline: they wrote `plannedAt`, and
+creating a task with a time dropped the time, because `PluginAPI.addTask` has
+no `dueWithTime`. `plugin/v20-schedule-writes.test.js` covers the canonical
+writes.

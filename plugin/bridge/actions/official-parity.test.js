@@ -36,10 +36,51 @@ test("task.create literal keeps short syntax in the title", async () => {
 });
 
 test("task.create schedules dueDate and dueTime in local time", async () => {
-  const { added } = pluginWithTasks([]);
-  await handlers["task.create"]({ title: "Call", dueDate: "2026-12-03", dueTime: "09:30" });
-  assert.equal(added[0].dueDay, "2026-12-03");
-  assert.equal(added[0].dueWithTime, new Date(2026, 11, 3, 9, 30).getTime());
+  const updated = [];
+  const { added } = pluginWithTasks([], { updateTask: async (id, data) => updated.push({ id, data }) });
+  const out = await handlers["task.create"]({ title: "Call", dueDate: "2026-12-03", dueTime: "09:30" });
+  // PluginAPI.addTask has no dueWithTime, so the time is set right after creation.
+  assert.equal(added[0].dueDay, undefined);
+  assert.equal(added[0].isIgnoreShortSyntax, true);
+  assert.deepEqual(updated, [{ id: out.taskId, data: { dueWithTime: new Date(2026, 11, 3, 9, 30).getTime(), dueDay: null } }]);
+  assert.equal(out.scheduleError, undefined);
+});
+
+test("task.create reports a failed time write next to the created id", async () => {
+  const { added } = pluginWithTasks([], { updateTask: async () => { throw new Error("boom"); } });
+  const out = await handlers["task.create"]({ title: "Call", dueDate: "2026-12-03", dueTime: "09:30" });
+  assert.equal(added.length, 1);
+  assert.equal(out.taskId, "task-1");
+  assert.equal(out.scheduleError.message, "boom");
+});
+
+test("task.create refuses a skipped or repeated local time before adding", async () => {
+  process.env.TZ = "America/Chicago";
+  try {
+    const { added } = pluginWithTasks([]);
+    await assert.rejects(handlers["task.create"]({ title: "x", dueDate: "2026-03-08", dueTime: "02:30" }), { code: "INVALID_REQUEST" });
+    await assert.rejects(handlers["task.create"]({ title: "x", dueDate: "2026-11-01", dueTime: "01:30" }), { code: "INVALID_REQUEST" });
+    assert.equal(added.length, 0);
+  } finally {
+    delete process.env.TZ;
+  }
+});
+
+test("task.createWithSubtasks parses titles once and lets subtasks inherit project and tags", async () => {
+  const { added } = pluginWithTasks([], { updateTask: async () => {} });
+  await handlers["task.createWithSubtasks"]({
+    title: "Launch #shopping +wor",
+    subtasks: [{ title: "Copy #shopping 30m", tagIds: ["tag-x"] }],
+  });
+  assert.equal(added[0].projectId, "proj-1");
+  assert.deepEqual(added[0].tagIds, ["tag-1"]);
+  assert.equal(added[1].parentId, "task-1");
+  // The app gives a subtask its parent's project and no tags.
+  assert.equal("projectId" in added[1], false);
+  assert.equal("tagIds" in added[1], false);
+  assert.equal(added[1].title, "Copy #shopping");
+  assert.equal(added[1].timeEstimate, 30 * 60 * 1000);
+  assert.ok(added.every((data) => data.isIgnoreShortSyntax === true));
 });
 
 test("task.create explicit dueDate overrides a parsed @date and its time", async () => {

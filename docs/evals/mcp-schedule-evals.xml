@@ -55,4 +55,8 @@
     <question>An agent logged 30 minutes with add_time_to_task, got OUTCOME_UNKNOWN, and now knows the day's total should be exactly one hour. Which tool corrects it safely, even if called twice?</question>
     <answer>set_task_time_for_day</answer>
   </qa_pair>
+  <qa_pair>
+    <question>An agent wants to keep a task on Thursday but remove its 14:00 start time without losing the day. Which update_task argument, set to null, drops the time while dueDay keeps the day?</question>
+    <answer>dueWithTime</answer>
+  </qa_pair>
 </evaluation>

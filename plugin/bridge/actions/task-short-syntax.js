@@ -33,6 +33,28 @@ async function parseTaskShortSyntax(title) {
   return parsed;
 }
 
+// parseDueAndEstimate reads only @date [time] and estimates, as the app does
+// for subtask titles; #tags and +projects stay in the title.
+function parseDueAndEstimate(title) {
+  const parsed = { title: title || "" };
+  const remove = [];
+  const due = parseDueSyntax(parsed.title);
+  if (due) {
+    parsed.dueDay = due.dueDay;
+    if (due.dueWithTime != null) parsed.dueWithTime = due.dueWithTime;
+    remove.push(due.token);
+    if (due.timeToken) remove.push(due.timeToken);
+  }
+  const estimate = parseTimeSyntax(parsed.title);
+  if (estimate) {
+    if (estimate.timeSpent != null) parsed.timeSpent = estimate.timeSpent;
+    if (estimate.timeEstimate != null) parsed.timeEstimate = estimate.timeEstimate;
+    remove.push(estimate.token);
+  }
+  parsed.title = stripTokens(parsed.title, remove) || parsed.title;
+  return parsed;
+}
+
 async function findTagByTitle(title) {
   if (typeof PluginAPI.getAllTags !== "function") return null;
   const tags = await PluginAPI.getAllTags();
@@ -111,4 +133,4 @@ function localDateStr(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-module.exports = { parseTaskShortSyntax };
+module.exports = { parseDueAndEstimate, parseTaskShortSyntax };

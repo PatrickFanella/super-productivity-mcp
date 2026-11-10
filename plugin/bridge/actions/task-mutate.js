@@ -1,5 +1,7 @@
 const { typedError } = require("../errors");
-const { findTask, getTasksBySource, isLocalDateString, startOfTodayMs, valueOf } = require("./task-common");
+const { findTask, getDayContext, getTasksBySource, isLocalDateString, valueOf } = require("./task-common");
+const { clearPatch, dayOnlyPatch, hasScheduleInput, scheduleWrite } = require("./task-schedule-write");
+const { scheduleDayIn, taskSchedule } = require("./task-shape");
 
 const ARCHIVE_UNAVAILABLE_MESSAGE =
   "True archive needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. Pass allowDoneFallback:true only if marking the task done is acceptable.";
@@ -13,7 +15,22 @@ async function taskUpdate(payload) {
   }
   const updates = { ...payload };
   delete updates.taskId;
-  await PluginAPI.updateTask(payload.taskId, updates);
+  const input = {};
+  for (const key of ["dueDay", "dueWithTime", "plannedAt"]) {
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      input[key] = updates[key];
+      delete updates[key];
+    }
+  }
+  if (hasScheduleInput(input)) {
+    // Read the task fresh: the canonical write depends on its current schedule.
+    const task = await findTask(payload.taskId);
+    if (!task) throw typedError("TASK_NOT_FOUND", `Task ${payload.taskId} not found`, false);
+    Object.assign(updates, scheduleWrite(input, task));
+  }
+  if (Object.keys(updates).length === 0) throw typedError("NO_UPDATE_FIELDS", "No update fields provided", false);
+  // Titles are data from the caller: never let the app parse them as short syntax.
+  await PluginAPI.updateTask(payload.taskId, updates, { isIgnoreShortSyntax: true });
   return { updated: true };
 }
 
@@ -167,25 +184,36 @@ async function taskBulkUpdate(payload) {
 async function taskBulkUpdateCore(payload, allowedFields) {
   const updates = payload?.updates || [];
   const dryRun = valueOf(payload || {}, "dryRun", "dry_run") === true;
-  const existingTasks = dryRun || allowedFields ? await getTasksBySource("all") : [];
+  const needsTasks = dryRun || allowedFields || updates.some((item) => hasScheduleInput(mapTaskUpdate(item)));
+  const existingTasks = needsTasks ? await getTasksBySource("all") : [];
   const results = [];
   for (const item of updates) {
     const taskId = valueOf(item, "taskId", "task_id");
     try {
       if (!taskId) throw typedError("INVALID_REQUEST", "taskId is required", false);
       const fullPatch = mapTaskUpdate(item);
-      const patch = pickAllowedPatch(fullPatch, allowedFields);
-      if (Object.keys(patch).length === 0) {
+      const picked = pickAllowedPatch(fullPatch, allowedFields);
+      if (Object.keys(picked).length === 0) {
         throw typedError("NO_UPDATE_FIELDS", allowedFields ? `No allowed fields provided: ${allowedFields.join(", ")}` : "No update fields provided", false);
       }
       const task = existingTasks.find((candidate) => candidate.id === taskId) || null;
-      if ((dryRun || allowedFields) && !task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
+      if ((needsTasks || allowedFields) && !task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
+      // Schedule inputs become the canonical v20 fields; the diff shows them.
+      const patch = { ...picked };
+      const scheduleInput = {};
+      for (const key of ["dueDay", "dueWithTime", "plannedAt"]) {
+        if (Object.prototype.hasOwnProperty.call(patch, key)) {
+          scheduleInput[key] = patch[key];
+          delete patch[key];
+        }
+      }
+      Object.assign(patch, scheduleWrite(scheduleInput, task));
       const result = { id: taskId, success: true };
       const changes = diffTaskPatch(task, patch);
       if (changes.length) result.changes = changes;
-      const ignoredFields = ignoredPatchFields(fullPatch, patch);
+      const ignoredFields = ignoredPatchFields(fullPatch, picked);
       if (ignoredFields.length) result.ignoredFields = ignoredFields;
-      if (!dryRun) await PluginAPI.updateTask(taskId, patch);
+      if (!dryRun) await PluginAPI.updateTask(taskId, patch, { isIgnoreShortSyntax: true });
       results.push(result);
     } catch (err) {
       results.push({ id: taskId, success: false, error: err.message || String(err) });
@@ -214,7 +242,28 @@ function diffTaskPatch(task, patch) {
 }
 
 async function taskBulkReschedule(payload) {
-  return taskBulkUpdateCore(payload || {}, ["plannedAt", "dueDay", "timeEstimate"]);
+  return taskBulkUpdateCore(payload || {}, ["dueWithTime", "plannedAt", "dueDay", "timeEstimate"]);
+}
+
+// applyPatches writes already-canonical patches ({taskId, patch}) with the
+// bulk result shape, or only reports them in a dry run.
+async function applyPatches(entries, tasksById, dryRun) {
+  const results = [];
+  for (const { taskId, patch, note } of entries) {
+    const task = tasksById.get(taskId) || null;
+    try {
+      if (!task) throw typedError("TASK_NOT_FOUND", `Task ${taskId} not found`, false);
+      const result = { id: taskId, success: true };
+      if (note) result.note = note;
+      const changes = diffTaskPatch(task, patch);
+      if (changes.length) result.changes = changes;
+      if (!dryRun && changes.length) await PluginAPI.updateTask(taskId, patch);
+      results.push(result);
+    } catch (err) {
+      results.push({ id: taskId, success: false, error: err.message || String(err) });
+    }
+  }
+  return { dryRun, results };
 }
 
 // taskWorklog reports per-day time from leaf tasks only: Super Productivity
@@ -289,6 +338,7 @@ function mapTaskUpdate(item) {
     ["notes", "notes"],
     ["isDone", "is_done"],
     ["dueDay", "due_day"],
+    ["dueWithTime", "due_with_time"],
     ["plannedAt", "planned_at"],
     ["timeEstimate", "time_estimate"],
     ["timeSpent", "time_spent"],
@@ -303,10 +353,25 @@ function mapTaskUpdate(item) {
   return data;
 }
 
+// taskPlanToday files tasks under the app's logical Today as day-only work,
+// as "Add to Today" does: it never invents a time. A task already timed on
+// that day keeps its time. unplan removes the whole schedule.
 async function taskPlanToday(payload) {
   const taskIds = valueOf(payload || {}, "taskIds", "task_ids") || [];
-  const plannedAt = payload?.unplan ? null : startOfTodayMs();
-  return taskBulkUpdate({ updates: taskIds.map((taskId) => ({ taskId, plannedAt })) });
+  const tasksById = new Map((await getTasksBySource("active")).map((task) => [task.id, task]));
+  const day = payload?.unplan ? null : await getDayContext();
+  const entries = taskIds.map((taskId) => {
+    const task = tasksById.get(taskId);
+    if (!day) return { taskId, patch: clearPatch(task) };
+    const schedule = task ? taskSchedule(task) : null;
+    if (schedule && schedule.kind === "timed" && scheduleDayIn(schedule, day.startOfNextDayDiffMs) === day.todayStr) {
+      return { taskId, patch: {}, note: "already scheduled with a time today" };
+    }
+    return { taskId, patch: dayOnlyPatch(task, day.todayStr) };
+  });
+  const out = await applyPatches(entries, tasksById, false);
+  if (day) out.dayContext = day;
+  return out;
 }
 
 const exported = {
@@ -330,5 +395,6 @@ const exported = {
 };
 
 Object.defineProperty(exported, "taskBulkUpdateCore", { value: taskBulkUpdateCore, enumerable: false });
+Object.defineProperty(exported, "applyPatches", { value: applyPatches, enumerable: false });
 
 module.exports = exported;

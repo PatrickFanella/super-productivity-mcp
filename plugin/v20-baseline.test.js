@@ -128,10 +128,13 @@ test("archive with allowDoneFallback marks the task done and reports archived:fa
   }
 });
 
-test("baseline gap (#25): restore is unavailable without REST", async () => {
+test("without Local REST, restore fails in the plugin and nothing is written (#25)", async () => {
   const both = await runBoth("task.restore", { taskId: "fx-archived-leaf" });
   assertSameOutcome(both);
-  assert.equal(both.modular.error.code, "UNSUPPORTED_ACTION");
+  for (const side of [both.modular, both.packaged]) {
+    assert.equal(side.error.code, "UNSUPPORTED_ACTION");
+    assert.deepEqual(writes(side.calls), []);
+  }
 });
 
 test("baseline gap (#16): start writes currentTimestamp instead of startTracking", async () => {

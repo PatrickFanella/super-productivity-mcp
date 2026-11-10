@@ -226,7 +226,7 @@ Safety notes:
 - When a non-idempotent write times out after the plugin picked it up, the error is `OUTCOME_UNKNOWN` (not retryable): check the current state before retrying.
 - `list_tasks`, `list_projects` and `list_tags` are aliases of `get_tasks`, `get_projects` and `get_tags`, matching Super Productivity's built-in MCP. `get_tasks` also reports `truncated` when `limit` or `offset` left matches out.
 - Broad schedule and note writes are dry-run-first where possible. Use `dryRun:false` plus `confirmApply:true` only after inspecting returned diffs.
-- True archive uses Super Productivity's Local REST API, which the MCP server calls itself. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied. A failed REST archive is never retried through the plugin. `restore_task` still depends on the plugin process's environment; see [`docs/local-rest.md`](docs/local-rest.md).
+- True archive uses Super Productivity's Local REST API, which the MCP server calls itself. Without `SP_LOCAL_REST_URL` or `SUPER_PRODUCTIVITY_REST_URL`, `archive_task` only marks done when `allowDoneFallback:true` is explicitly supplied. `restore_task` also goes through Local REST and has no fallback. A failed REST call is never retried through the plugin; see [`docs/local-rest.md`](docs/local-rest.md).
 - Recurrence tools require a Super Productivity build whose plugin sandbox allows repeat-config actions. For non-interactive automation, call `update_task_recurrence` without `isAskToUpdateAllTaskInstances` or set it to `false`; setting it to `true` intentionally asks Super Productivity to show the UI confirmation for updating existing task instances.
 
 ## Package the Super Productivity plugin

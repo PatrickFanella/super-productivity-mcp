@@ -47,17 +47,18 @@ is not rewritten; stock v20 answers it with "connection refused" or
 | Tool | Route | Who calls it | Without REST |
 |------|-------|--------------|--------------|
 | `archive_task` | `POST /tasks/:id/archive` | Go server | Errors with `UNSUPPORTED_ACTION` unless `allowDoneFallback:true`, which marks the task done instead of archiving it. |
-| `restore_task` | `POST /tasks/:id/restore` | Modular plugin only | `UNSUPPORTED_ACTION`. |
+| `restore_task` | `POST /tasks/:id/restore` | Go server | `UNSUPPORTED_ACTION`; no fallback. |
 | `start_task` | `POST /tasks/:id/start` | Modular plugin only | Plugin writes `currentTimestamp`. |
 | `stop_task` | `POST /task-control/stop` | Modular plugin only | Plugin clears `currentTimestamp`. |
 | `get_current_task` | `GET /task-control/current` | Modular plugin only | Plugin scans tasks for `currentTimestamp`. |
 
 "Modular plugin only" rows read `SP_LOCAL_REST_URL` from the plugin's own
-process, which the installed packaged plugin does not do. Roadmap issues #16
-and #25 move them to the Go server.
+process, which the installed packaged plugin does not do. Roadmap issue #16
+moves them to the Go server.
 
 Only a top-level task can be archived; its subtasks go with it. Archiving a
-subtask returns `INVALID_REQUEST`.
+subtask returns `INVALID_REQUEST`. Restoring a task that is not in the archive
+returns `TASK_NOT_FOUND`; restore brings its archived subtasks back too.
 
 ## Client config example
 

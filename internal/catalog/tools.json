@@ -426,7 +426,7 @@
     {
       "mcpName": "restore_task",
       "action": "task.restore",
-      "description": "Restore an archived task through the optional Local REST API. Requires SP_LOCAL_REST_URL or SUPER_PRODUCTIVITY_REST_URL; no plugin fallback exists.",
+      "description": "Restore an archived top-level task (and its subtasks) through Super Productivity's Local REST API, which the MCP server calls directly. Needs SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN; there is no plugin fallback and it never marks a task undone instead.",
       "title": "Restore archived task",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },

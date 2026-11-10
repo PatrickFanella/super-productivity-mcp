@@ -25,6 +25,7 @@ type restRoute func(ctx context.Context, rest *localrest.Client, payload map[str
 // restRoutes are the actions that use Local REST when it is configured.
 var restRoutes = map[string]restRoute{
 	"task.archive": archiveTask,
+	"task.restore": restoreTask,
 }
 
 // Router implements domain.Bridge over Local REST and plugin IPC.
@@ -135,4 +136,30 @@ func archiveTask(ctx context.Context, rest *localrest.Client, payload map[string
 		}
 	}
 	return map[string]any{"archived": true, "via": "localRest"}, nil
+}
+
+func restoreTask(ctx context.Context, rest *localrest.Client, payload map[string]any) (map[string]any, error) {
+	taskID := stringArg(payload, "taskId", "task_id")
+	if taskID == "" {
+		return nil, domain.TypedError{Code: "INVALID_REQUEST", Message: "taskId is required"}
+	}
+	path, err := localrest.SegmentPath("tasks", taskID, "restore")
+	if err != nil {
+		return nil, err
+	}
+	data, err := rest.Do(ctx, localrest.Request{Method: "POST", Path: path, Mutation: true})
+	if err != nil {
+		return nil, err
+	}
+	// The app answers with the restored task once it has left the archive.
+	var task struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(data, &task) != nil || task.ID != taskID {
+		return nil, domain.TypedError{
+			Code:    localrest.CodeOutcomeUnknown,
+			Message: "Super Productivity answered the restore request without returning the task. Check it with get_tasks source:\"all\" before retrying.",
+		}
+	}
+	return map[string]any{"restored": true, "via": "localRest", "taskId": taskID}, nil
 }

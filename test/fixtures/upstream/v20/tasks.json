@@ -2607,5 +2607,31 @@
       "repeatCfgId": null,
       "plannedAt": 1793368800000
     }
+  ],
+  "notes": [
+    {
+      "id": "fx-note-project",
+      "content": "Fixture project note body",
+      "projectId": "fixture-project-alpha",
+      "isPinnedToToday": false,
+      "created": 1793545200000,
+      "modified": 1793631600000
+    },
+    {
+      "id": "fx-note-today",
+      "content": "Fixture Today note body",
+      "projectId": null,
+      "isPinnedToToday": true,
+      "created": 1794232800000,
+      "modified": 1794232800000
+    },
+    {
+      "id": "fx-note-project-today",
+      "content": "Fixture pinned project note body",
+      "projectId": "fixture-project-beta",
+      "isPinnedToToday": true,
+      "created": 1793890800000,
+      "modified": 1793890800000
+    }
   ]
 }

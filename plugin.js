@@ -1778,6 +1778,17 @@ async function attachGitea(payload = {}) {
         .map((pair) => ({ date: pair[0], value: Number(pair[1]) })),
     }));
   }
+  function noteView(note) {
+    const out = { id: note.id, content: note.content, projectId: note.projectId == null ? null : note.projectId, isPinnedToToday: note.isPinnedToToday === true };
+    if (note.created !== undefined) out.created = note.created;
+    if (note.modified !== undefined) out.modified = note.modified;
+    return out;
+  }
+  async function readNotes() {
+    if (typeof PluginAPI.getAppState !== 'function') throw typedError('UNSUPPORTED_ACTION', 'Reading notes needs Local REST or PluginAPI.getAppState, which this Super Productivity runtime lacks', false);
+    const state = await PluginAPI.getAppState();
+    return Object.values((state && state.notes) || {}).filter(Boolean);
+  }
 
   const handlers = {
     'task.create': taskCreate,
@@ -1829,6 +1840,21 @@ async function attachGitea(payload = {}) {
     'tag.list': async () => ({ tags: await PluginAPI.getAllTags() }),
     'tag.create': async (payload) => ({ tagId: await PluginAPI.addTag(payload || {}) }),
     'tag.update': async (payload) => { await PluginAPI.updateTag(payload.tagId, payload.data || payload); return { updated: true }; },
+    // Mirrors actions/note.js: notes from the plugin's app state.
+    'note.list': async (payload) => {
+      const projectId = payload && (payload.projectId || payload.project_id);
+      const notes = (await readNotes())
+        .filter((note) => !projectId || note.projectId === projectId)
+        .filter((note) => !(payload && payload.pinnedToToday === true) || note.isPinnedToToday === true);
+      return { notes: notes.map(noteView), via: 'plugin' };
+    },
+    'note.get': async (payload) => {
+      const id = payload && (payload.noteId || payload.note_id || payload.id);
+      if (!id) throw typedError('INVALID_REQUEST', 'noteId is required', false);
+      const note = (await readNotes()).find((candidate) => candidate.id === id);
+      if (!note) throw typedError('NOTE_NOT_FOUND', 'Note ' + id + ' not found', false);
+      return { note: noteView(note), via: 'plugin' };
+    },
     'notification.show': async (payload) => {
       const message = (payload && payload.message) || '';
       const type = String((payload && payload.type) || 'INFO').toUpperCase();

@@ -75,4 +75,8 @@
     <question>A user forgot to record yesterday's six glasses of water. Which tool sets that day's habit value without adding to it, so repeating the call is safe?</question>
     <answer>set_habit_value_for_day</answer>
   </qa_pair>
+  <qa_pair>
+    <question>A server runs with SP_MCP_SCOPES=read. Which additional scope must be granted before get_notes and the sp://notes resource become available?</question>
+    <answer>notes</answer>
+  </qa_pair>
 </evaluation>

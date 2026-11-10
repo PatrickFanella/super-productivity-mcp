@@ -166,6 +166,11 @@ func (s *Server) handleResourcesRead(ctx context.Context, enc *json.Encoder, msg
 		s.reply(enc, msg.ID, errorContent(errResourceNotPermitted))
 		return
 	}
+	// A resource backed by a content tool needs that tool's grant as well.
+	if tool := s.catalog.LookupAction(res.Action); tool != nil && !s.allowed(tool) {
+		s.reply(enc, msg.ID, errorContent(withAction(errNotPermitted, tool)))
+		return
+	}
 	payload := cloneMap(res.Payload)
 	if !s.scopes[catalog.ScopeNotes] {
 		payload["searchNotes"] = false
@@ -185,8 +190,9 @@ func (s *Server) handleResourcesRead(ctx context.Context, enc *json.Encoder, msg
 	})
 }
 
-// redact removes every "notes" field from a result when the grant lacks the
-// notes scope. Lengths such as noteLength are kept.
+// redact removes every "notes" field (task notes) and "content" field
+// (standalone note bodies) from a result when the grant lacks the notes
+// scope. Lengths such as noteLength are kept.
 func (s *Server) redact(result map[string]any) map[string]any {
 	if s.scopes[catalog.ScopeNotes] || result == nil {
 		return result
@@ -199,7 +205,7 @@ func stripNotes(v any) any {
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, x := range t {
-			if k == "notes" {
+			if k == "notes" || k == "content" {
 				continue
 			}
 			out[k] = stripNotes(x)

@@ -183,8 +183,8 @@ See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported t
 
 | Scope | Grants |
 |-------|--------|
-| `read` | Read-only tools and all `sp://` resources |
-| `notes` | Task notes in results, and `search` matching note text. Without it, every `notes` field is removed from results and searches match titles only |
+| `read` | Read-only tools and the `sp://` resources (except `sp://notes`) |
+| `notes` | Task notes in results, `search` matching note text, and, together with `read`, the standalone note tools (`get_notes`, `get_note`) and `sp://notes`. Without it, every `notes` and `content` field is removed from results, searches match titles only, and the note tools are hidden |
 | `create` | `create_task` and `create_task_with_subtasks` |
 | `write` | Every other tool that changes data |
 

@@ -10,6 +10,7 @@ const handlers = {
   ...require("./project"),
   ...require("./issue-provider"),
   ...require("./tag"),
+  ...require("./note"),
   ...require("./system"),
 };
 

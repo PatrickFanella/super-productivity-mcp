@@ -43,6 +43,9 @@ var restRoutes = map[string]route{
 	"task.stop":    {rest: stopTask},
 	"task.current": {rest: currentTask},
 
+	"note.list": {rest: listNotes},
+	"note.get":  {rest: getNote},
+
 	"focus.state":    {rest: focusState, needsREST: true},
 	"counter.setDay": {rest: setHabitDay, needsREST: true},
 

@@ -61,8 +61,12 @@ func (s *Server) grantedScopes() []string {
 	return out
 }
 
-// allowed reports whether the grant covers the tool's scope.
+// allowed reports whether the grant covers the tool's scope and, for a tool
+// that returns personal content, its content scope too.
 func (s *Server) allowed(t *catalog.Tool) bool {
+	if t.ContentScope != "" && !s.scopes[t.ContentScope] {
+		return false
+	}
 	return t.Scope == "" || s.scopes[t.Scope]
 }
 

@@ -4,6 +4,8 @@
 // scopes. Mirrors noteView in internal/bridge/notes.go.
 const { typedError } = require("../errors");
 
+const NOTE_WRITES_UNAVAILABLE = "Changing notes needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.";
+
 function noteView(note) {
   const out = {
     id: note.id,
@@ -38,5 +40,16 @@ module.exports = {
     const note = (await readNotes()).find((candidate) => candidate.id === id);
     if (!note) throw typedError("NOTE_NOT_FOUND", `Note ${id} not found`, false);
     return { note: noteView(note), via: "plugin" };
+  },
+  // Note writes go through Local REST, which the MCP server calls itself; the
+  // plugin API has no note writes.
+  "note.create": async () => {
+    throw typedError("UNSUPPORTED_ACTION", NOTE_WRITES_UNAVAILABLE, false);
+  },
+  "note.update": async () => {
+    throw typedError("UNSUPPORTED_ACTION", NOTE_WRITES_UNAVAILABLE, false);
+  },
+  "note.delete": async () => {
+    throw typedError("UNSUPPORTED_ACTION", NOTE_WRITES_UNAVAILABLE, false);
   },
 };

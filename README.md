@@ -185,7 +185,7 @@ See [`docs/local-rest.md`](docs/local-rest.md) for Local REST setup, supported t
 |-------|--------|
 | `read` | Read-only tools and the `sp://` resources (except `sp://notes`) |
 | `notes` | Task notes in results, `search` matching note text, and, together with `read`, the standalone note tools (`get_notes`, `get_note`) and `sp://notes`. Without it, every `notes` and `content` field is removed from results, searches match titles only, and the note tools are hidden |
-| `create` | `create_task` and `create_task_with_subtasks` |
+| `create` | `create_task`, `create_task_with_subtasks` and `create_note` |
 | `write` | Every other tool that changes data |
 
 `get_status`, `check_connection`, `bridge_health`, `debug_directories` and `bridge_capabilities` are always available. Tools outside the grant are left out of `tools/list` and refused with `NOT_PERMITTED`. Unknown scope names are logged and ignored, so a value with no valid scope grants only the status tools. Each tool's scope is listed in [`docs/tools.md`](docs/tools.md).

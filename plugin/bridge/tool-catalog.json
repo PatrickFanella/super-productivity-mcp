@@ -1341,6 +1341,82 @@
       }
     },
     {
+      "mcpName": "create_note",
+      "action": "note.create",
+      "description": "Create a standalone note with non-empty content, in a project (projectId) and/or pinned to Today (isPinnedToToday: true); it needs at least one of them, or it would show nowhere. Goes through Local REST POST /notes (needed). The result has noteId and placement, never the body. Retrying after OUTCOME_UNKNOWN can create a duplicate; check get_notes first.",
+      "title": "Create note",
+      "scope": "create",
+      "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string" },
+          "projectId": { "type": ["string", "null"] },
+          "isPinnedToToday": { "type": "boolean" }
+        },
+        "required": ["content"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": { "type": "string" },
+          "projectId": { "type": ["string", "null"] },
+          "isPinnedToToday": { "type": "boolean" },
+          "via": { "type": "string" }
+        },
+        "required": ["noteId"]
+      }
+    },
+    {
+      "mcpName": "update_note",
+      "action": "note.update",
+      "description": "Edit a standalone note's content or Today pin, or move it to another project (projectId). A move is its own request: projectId with content or isPinnedToToday is refused, unless projectId is the note's current project. A note without a project must stay pinned. Checked against a fresh read before Local REST PATCH /notes/:id (needed). The result has placement and moved, never the body.",
+      "title": "Update note",
+      "scope": "write",
+      "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": { "type": "string" },
+          "content": { "type": "string" },
+          "projectId": { "type": "string" },
+          "isPinnedToToday": { "type": "boolean" }
+        },
+        "required": ["noteId"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": { "type": "string" },
+          "projectId": { "type": ["string", "null"] },
+          "isPinnedToToday": { "type": "boolean" },
+          "via": { "type": "string" }
+        },
+        "required": ["noteId"]
+      }
+    },
+    {
+      "mcpName": "delete_note",
+      "action": "note.delete",
+      "description": "Delete a standalone note through Local REST DELETE /notes/:id (needed). This cannot be undone.",
+      "title": "Delete note",
+      "scope": "write",
+      "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
+      "inputSchema": {
+        "type": "object",
+        "properties": { "noteId": { "type": "string" } },
+        "required": ["noteId"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": { "noteId": { "type": "string" }, "deleted": { "type": "boolean" }, "via": { "type": "string" } },
+        "required": ["noteId", "deleted"]
+      }
+    },
+    {
       "mcpName": "show_notification",
       "action": "notification.show",
       "description": "Show a notification in Super Productivity",

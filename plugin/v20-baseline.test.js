@@ -389,3 +389,11 @@ test("notes are read from the plugin's app state with explicit placement (#17)",
     assert.equal(older[side].error.code, "UNSUPPORTED_ACTION");
   }
 });
+
+test("note writes need Local REST in both plugin projections (#18)", async () => {
+  for (const [action, payload] of [["note.create", { content: "Fixture", isPinnedToToday: true }], ["note.update", { noteId: "fx-note-today", content: "x" }], ["note.delete", { noteId: "fx-note-today" }]]) {
+    const both = await runBoth(action, payload);
+    assertSameOutcome(both);
+    assert.equal(both.modular.error.code, "UNSUPPORTED_ACTION");
+  }
+});

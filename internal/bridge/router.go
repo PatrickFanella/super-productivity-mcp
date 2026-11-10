@@ -46,6 +46,10 @@ var restRoutes = map[string]route{
 	"note.list": {rest: listNotes},
 	"note.get":  {rest: getNote},
 
+	"note.create": {rest: createNote, needsREST: true},
+	"note.update": {rest: updateNote, needsREST: true},
+	"note.delete": {rest: deleteNote, needsREST: true},
+
 	"focus.state":    {rest: focusState, needsREST: true},
 	"counter.setDay": {rest: setHabitDay, needsREST: true},
 

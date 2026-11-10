@@ -1855,6 +1855,9 @@ async function attachGitea(payload = {}) {
       if (!note) throw typedError('NOTE_NOT_FOUND', 'Note ' + id + ' not found', false);
       return { note: noteView(note), via: 'plugin' };
     },
+    'note.create': async () => { throw typedError('UNSUPPORTED_ACTION', 'Changing notes needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false); },
+    'note.update': async () => { throw typedError('UNSUPPORTED_ACTION', 'Changing notes needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false); },
+    'note.delete': async () => { throw typedError('UNSUPPORTED_ACTION', 'Changing notes needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false); },
     'notification.show': async (payload) => {
       const message = (payload && payload.message) || '';
       const type = String((payload && payload.type) || 'INFO').toUpperCase();

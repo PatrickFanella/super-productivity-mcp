@@ -79,4 +79,8 @@
     <question>A server runs with SP_MCP_SCOPES=read. Which additional scope must be granted before get_notes and the sp://notes resource become available?</question>
     <answer>notes</answer>
   </qa_pair>
+  <qa_pair>
+    <question>An agent wants to move a note to another project and change its text. update_note refuses doing both at once. How many update_note calls does it need?</question>
+    <answer>2</answer>
+  </qa_pair>
 </evaluation>

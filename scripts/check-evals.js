@@ -33,6 +33,17 @@ if (opened !== pairs.length) fail(`${opened} <qa_pair> tags but ${pairs.length} 
 const MIN_SCENARIOS = 21;
 if (pairs.length < MIN_SCENARIOS) fail(`expected at least ${MIN_SCENARIOS} qa_pair entries, got ${pairs.length}`);
 
+// Every answer token that names a tool (snake_case) or a resource (sp://)
+// must exist in the catalog, so a renamed or misspelled tool fails.
+for (const pair of pairs) {
+  for (const token of pair.answer.match(/\b[a-z]+(?:_[a-z]+)+\b/g) || []) {
+    if (!toolNames.has(token)) fail(`answer names unknown tool ${token}: ${pair.question}`);
+  }
+  for (const uri of pair.answer.match(/sp:\/\/[\w/-]+/g) || []) {
+    if (!resourceUris.has(uri)) fail(`answer names unknown resource ${uri}: ${pair.question}`);
+  }
+}
+
 const seenQuestions = new Set();
 for (const [index, pair] of pairs.entries()) {
   if (!pair.question || !pair.answer) fail(`qa_pair ${index + 1} has empty question or answer`);

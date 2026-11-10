@@ -89,7 +89,7 @@ func TestClearingDeadlinesAndAliasMapping(t *testing.T) {
 	if !reflect.DeepEqual(s.bodies[0], map[string]any{"deadlineDay": nil, "deadlineWithTime": nil}) {
 		t.Fatalf("clear body %#v", s.bodies[0])
 	}
-	if !reflect.DeepEqual(s.bodies[1], map[string]any{"deadlineRemindAt": nil, "dueWithTime": float64(1794240000000)}) {
+	if !reflect.DeepEqual(s.bodies[1], map[string]any{"deadlineRemindAt": nil, "dueWithTime": float64(1794240000000), "dueDay": nil}) {
 		t.Fatalf("alias body %#v", s.bodies[1])
 	}
 }
@@ -146,5 +146,23 @@ func TestDeadlinesWithoutRESTAreUnsupportedAndOtherUpdatesUseThePlugin(t *testin
 	}
 	if _, err := call(r, "task.update", map[string]any{"taskId": "x", "title": "y"}); err != nil || len(plugin.calls) != 1 {
 		t.Fatalf("plain update: %v %#v", err, plugin.calls)
+	}
+}
+
+func TestDeadlineUpdatesFollowTheScheduleRules(t *testing.T) {
+	s, r := newPatchRouter(t)
+	// The fixture task has a time, so a dueDay alone is refused before the PATCH.
+	_, err := call(r, "task.update", map[string]any{"taskId": "fx-deadline-day", "dueDay": "2026-11-12", "deadlineDay": "2026-11-14"})
+	if code(t, err) != "INVALID_REQUEST" {
+		t.Fatalf("dueDay alone on a timed task: %v", err)
+	}
+	for _, b := range s.bodies {
+		if b != nil {
+			t.Fatalf("PATCH sent: %#v", s.bodies)
+		}
+	}
+	// Making it day-only explicitly is allowed.
+	if _, err := call(r, "task.update", map[string]any{"taskId": "fx-deadline-day", "dueDay": "2026-11-12", "dueWithTime": nil, "deadlineDay": "2026-11-14"}); err != nil {
+		t.Fatal(err)
 	}
 }

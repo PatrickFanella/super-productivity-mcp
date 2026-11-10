@@ -133,7 +133,8 @@ func TestCapabilitiesReportPerOperationAvailability(t *testing.T) {
 	resp, _ = call(noREST, "bridge.capabilities", map[string]any{})
 	restore := resp.Result["operations"].(map[string]any)["task.restore"].(map[string]any)
 	current := resp.Result["operations"].(map[string]any)["task.current"].(map[string]any)
-	if restore["adapter"] != "plugin" || current["limitations"] == nil {
+	// Without REST these cannot run anywhere, and capabilities say so.
+	if restore["available"] != false || restore["reason"] != "needs Local REST" || current["available"] != false || current["limitations"] == nil {
 		t.Fatalf("restore %#v current %#v", restore, current)
 	}
 	addTime := resp.Result["operations"].(map[string]any)["task.addTime"].(map[string]any)

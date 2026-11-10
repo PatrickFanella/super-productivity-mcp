@@ -45,9 +45,6 @@ func timeArgs(payload map[string]any, allowZero bool) (taskID, date string, ms f
 		return "", "", 0, invalid("date must be a valid YYYY-MM-DD date")
 	}
 	raw, ok := payload["timeMs"].(float64)
-	if !ok {
-		raw, ok = payload["time_ms"].(float64)
-	}
 	min := 1.0
 	if allowZero {
 		min = 0

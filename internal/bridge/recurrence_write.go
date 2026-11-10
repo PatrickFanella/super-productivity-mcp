@@ -242,6 +242,11 @@ func setRecurrence(ctx context.Context, rest *localrest.Client, payload map[stri
 	if err != nil {
 		return nil, err
 	}
+	_, hasCycle := fields["repeatCycle"]
+	_, hasPreset := fields["quickSetting"]
+	if !hasCycle && !hasPreset {
+		return nil, invalid("recurrence needs quickSetting, repeatCycle or both")
+	}
 	body, err := scheduleBody(fields, nil, true)
 	if err != nil {
 		return nil, err

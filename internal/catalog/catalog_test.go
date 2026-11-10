@@ -116,3 +116,28 @@ func TestValidateOutputSchema(t *testing.T) {
 		t.Fatalf("expected INVALID_OUTPUT, got %v", err)
 	}
 }
+
+// TestEveryToolDeclaresAMatchingScope keeps a new tool from being callable
+// under every grant: only the status tools may omit a scope, read-only tools
+// need read, and tools that change data need create or write.
+func TestEveryToolDeclaresAMatchingScope(t *testing.T) {
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusTools := map[string]bool{"get_status": true, "check_connection": true, "bridge_health": true, "debug_directories": true, "bridge_capabilities": true}
+	for _, tool := range c.MCPTools() {
+		switch {
+		case statusTools[tool.MCPName]:
+			if tool.Scope != "" || !tool.ReadOnly() {
+				t.Errorf("%s: status tools are read-only and unscoped", tool.MCPName)
+			}
+		case tool.Scope == "":
+			t.Errorf("%s: missing scope", tool.MCPName)
+		case tool.ReadOnly() && tool.Scope != ScopeRead:
+			t.Errorf("%s: read-only but scope %q", tool.MCPName, tool.Scope)
+		case !tool.ReadOnly() && tool.Scope != ScopeCreate && tool.Scope != ScopeWrite:
+			t.Errorf("%s: changes data but scope %q", tool.MCPName, tool.Scope)
+		}
+	}
+}

@@ -42,7 +42,7 @@ different tool schemas; do not mix their arguments.
 
 | Interface | Where it runs | What it can do |
 | --- | --- | --- |
-| This suite (`sp-mcp`) | Local stdio MCP server talking to the bundled plugin over file IPC, plus the optional Local REST API for archive and restore. | Full task inventory, editing, scheduling and diagnostics, limited by `SP_MCP_SCOPES`. |
+| This suite (`sp-mcp`) | Local stdio MCP server talking to the bundled plugin over file IPC, plus the optional Local REST API, which it calls itself for archive and restore, tracking, time logging, recurrence, deadlines, notes, focus and habits. | Full task inventory, editing, scheduling and diagnostics, limited by `SP_MCP_SCOPES`. |
 | Native app MCP | `http://127.0.0.1:3876/mcp` inside the desktop app, with its own access key. | Active-task reads and Inbox capture. Its `create_task` takes `dueDate`, `dueTime` and `repeat` but not this suite's other fields. |
 | Local REST API | `http://127.0.0.1:3876` with a separate access token. | Scripts and this suite's REST routes. Not an MCP interface. |
 | SuperSync capture | The sync server's `/mcp` endpoint, for cloud assistants. | Adds tasks to the Inbox. It cannot read or edit existing tasks. |

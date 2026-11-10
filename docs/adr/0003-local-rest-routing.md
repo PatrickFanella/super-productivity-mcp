@@ -34,7 +34,10 @@ The Go server talks to Local REST itself:
   action does not depend on the plugin's data directories.
 - The route is chosen from configuration before anything is sent. A failed
   REST call is returned to the caller unchanged and never replayed through
-  plugin IPC, because the first attempt may already have changed data.
+  plugin IPC, because the first attempt may already have changed data. The
+  one exception is a read: `get_habit_history` asks the plugin first and
+  reads Local REST only when the plugin lacks `getAllSimpleCounters` or its
+  bridge cannot start.
 - A failure before the request was written is reported as
   `LOCAL_REST_UNAVAILABLE` (retryable). A failure after a mutation was sent,
   such as a timeout, a 5xx or an unreadable answer, is `OUTCOME_UNKNOWN`.

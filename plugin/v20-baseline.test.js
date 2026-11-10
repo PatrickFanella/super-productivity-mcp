@@ -189,15 +189,66 @@ test("baseline gap (#28): add time changes the total but not the day's record", 
   }
 });
 
-test("baseline gap (#29): worklog counts parents and subtasks and skips archived work", async () => {
+const minute = 60 * 1000;
+
+function worklogSummary(side) {
+  return {
+    taskIds: [...new Set(side.result.entries.map((entry) => entry.taskId))].sort(),
+    totalMs: side.result.totalMs,
+    coverage: side.result.coverage,
+  };
+}
+
+test("worklog counts leaf work once and reports active-only coverage (#29)", async () => {
   const both = await runBoth("task.worklog", { startDate: "2026-11-01", endDate: "2026-11-09" });
-  const minute = 60 * 1000;
   for (const side of [both.modular, both.packaged]) {
     assert.equal(side.ok, true);
-    const taskIds = [...new Set(side.result.entries.map((entry) => entry.taskId))].sort();
-    assert.deepEqual(taskIds, ["fx-child-1", "fx-child-2", "fx-parent"]);
-    // Leaf work is 90 minutes; the parent's roll-up counts it a second time.
-    assert.equal(side.result.totalMs, 180 * minute);
+    const summary = worklogSummary(side);
+    // The parent's roll-up is not counted again.
+    assert.deepEqual(summary.taskIds, ["fx-child-1", "fx-child-2"]);
+    assert.equal(summary.totalMs, 90 * minute);
+    assert.equal(summary.coverage.complete, false);
+    assert.equal(summary.coverage.archivedIncluded, false);
+  }
+  assert.deepEqual(both.modular.result, both.packaged.result);
+});
+
+test("worklog includes archived leaves when asked and then reports complete coverage (#29)", async () => {
+  const both = await runBoth("task.worklog", { startDate: "2026-11-01", endDate: "2026-11-09", includeArchived: true });
+  for (const side of [both.modular, both.packaged]) {
+    const summary = worklogSummary(side);
+    assert.deepEqual(summary.taskIds, ["fx-archived-child", "fx-archived-leaf", "fx-child-1", "fx-child-2"]);
+    // 90 active + 40 archived child + 80 archived leaf; the archived parent is a roll-up.
+    assert.equal(summary.totalMs, 210 * minute);
+    assert.deepEqual(summary.coverage, { activeIncluded: true, archivedIncluded: true, complete: true });
+    assert.ok(side.result.entries.filter((entry) => entry.isArchived).every((entry) => entry.taskId.startsWith("fx-archived-")));
+  }
+  assert.deepEqual(both.modular.result, both.packaged.result);
+});
+
+test("worklog per-day totals across a month boundary (#29)", async () => {
+  const both = await runBoth("task.worklog", { startDate: "2026-10-29", endDate: "2026-11-04", includeArchived: true });
+  for (const side of [both.modular, both.packaged]) {
+    assert.deepEqual(side.result.entries.map((entry) => [entry.date, entry.taskId, entry.timeMs]), [["2026-11-04", "fx-archived-leaf", 60 * minute]]);
+    assert.equal(side.result.totalMs, 60 * minute);
+  }
+});
+
+test("worklog project filter keeps subtasks of the project (#29)", async () => {
+  const alpha = await runBoth("task.worklog", { startDate: "2026-11-01", endDate: "2026-11-09", projectId: "fixture-project-alpha" });
+  const beta = await runBoth("task.worklog", { startDate: "2026-11-01", endDate: "2026-11-09", project_id: "fixture-project-beta" });
+  for (const side of [alpha.modular, alpha.packaged]) assert.equal(side.result.totalMs, 90 * minute);
+  for (const side of [beta.modular, beta.packaged]) assert.deepEqual(side.result.entries, []);
+});
+
+test("worklog reports incomplete coverage when archive reads are unavailable (#29)", async () => {
+  const both = await runBoth("task.worklog", { startDate: "2026-11-01", endDate: "2026-11-09", includeArchived: true }, { getArchivedTasks: undefined });
+  for (const side of [both.modular, both.packaged]) {
+    assert.equal(side.ok, true);
+    assert.equal(side.result.totalMs, 90 * minute);
+    assert.equal(side.result.coverage.complete, false);
+    assert.equal(side.result.coverage.archivedIncluded, false);
+    assert.match(side.result.coverage.reason, /cannot read archived tasks/);
   }
 });
 

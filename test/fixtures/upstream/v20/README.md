@@ -85,7 +85,7 @@ from v20, not a regression; the issue that fixes it updates the test.
 | Recurrence | Set, update and delete dispatch actions stock v20 refuses. | `/task-repeat-cfgs`. | #22, #23 |
 | Create with repeat | Creates the task, then reports `recurrenceError`. | Attach through REST. | #24 |
 | Time logging | Add time changes `timeSpent` only. | `POST`/`PUT /tasks/:id/time` update the day. | #28 |
-| Worklog | Counts parent roll-ups and subtasks (180 min for 90 min of work); skips archived work. | Count leaf work once. | #29 |
+| Worklog | Fixed in #29: counts leaf work once (90 min), includes archived work with `includeArchived:true`, and reports `coverage`. Before: 180 min, archived work skipped. | Count leaf work once. | #29 |
 | Capabilities | Lists every registered action, including ones that cannot run. | Report runtime availability. | #26 |
 
 Both projections already return the whole 128-task inventory, and

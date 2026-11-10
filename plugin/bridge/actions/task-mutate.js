@@ -1,6 +1,6 @@
 const { typedError } = require("../errors");
 const localRest = require("../adapters/local-rest");
-const { findTask, getTasksBySource, startOfTodayMs, valueOf } = require("./task-common");
+const { findTask, getTasksBySource, isLocalDateString, startOfTodayMs, valueOf } = require("./task-common");
 
 const ARCHIVE_UNAVAILABLE_MESSAGE =
   "True archive needs Local REST: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN for the MCP server. Pass allowDoneFallback:true only if marking the task done is acceptable.";
@@ -224,12 +224,39 @@ async function taskBulkReschedule(payload) {
   return taskBulkUpdateCore(payload || {}, ["plannedAt", "dueDay", "timeEstimate"]);
 }
 
+// taskWorklog reports per-day time from leaf tasks only: Super Productivity
+// rolls subtask time up into the parent's timeSpentOnDay, so counting parents
+// too would count the same work twice. Totals come from the per-day records
+// in range, never from a task's aggregate timeSpent.
 async function taskWorklog(payload) {
-  const startDate = valueOf(payload || {}, "startDate", "start_date");
-  const endDate = valueOf(payload || {}, "endDate", "end_date") || startDate;
-  const tasks = await PluginAPI.getTasks();
+  payload = payload || {};
+  const startDate = valueOf(payload, "startDate", "start_date");
+  const endDate = valueOf(payload, "endDate", "end_date") || startDate;
+  for (const [name, value] of [["startDate", startDate], ["endDate", endDate]]) {
+    if (value != null && !isLocalDateString(value)) throw typedError("INVALID_REQUEST", `${name} must be YYYY-MM-DD`, false);
+  }
+  if (startDate && endDate && endDate < startDate) throw typedError("INVALID_REQUEST", "endDate must not be before startDate", false);
+  const projectId = valueOf(payload, "projectId", "project_id");
+  const includeArchived = valueOf(payload, "includeArchived", "include_archived") === true;
+
+  const tasks = (await PluginAPI.getTasks()).map((task) => ({ ...task, isArchived: false }));
+  const coverage = { activeIncluded: true, archivedIncluded: false, complete: false, reason: "archived tasks not requested; pass includeArchived:true" };
+  if (includeArchived) {
+    if (typeof PluginAPI.getArchivedTasks === "function") {
+      tasks.push(...(await PluginAPI.getArchivedTasks()).map((task) => ({ ...task, isArchived: true })));
+      coverage.archivedIncluded = true;
+      coverage.complete = true;
+      delete coverage.reason;
+    } else {
+      coverage.reason = "this Super Productivity runtime cannot read archived tasks";
+    }
+  }
+
+  const parentIds = new Set(tasks.filter((task) => task.parentId).map((task) => task.parentId));
   const entries = [];
   for (const task of tasks) {
+    if (parentIds.has(task.id) || (Array.isArray(task.subTaskIds) && task.subTaskIds.length > 0)) continue;
+    if (projectId && task.projectId !== projectId) continue;
     for (const entry of normalizeWorklogEntries(task)) {
       if (startDate && entry.date < startDate) continue;
       if (endDate && entry.date > endDate) continue;
@@ -238,13 +265,15 @@ async function taskWorklog(payload) {
         taskId: task.id,
         title: task.title,
         projectId: task.projectId,
+        parentId: task.parentId || null,
         tagIds: task.tagIds || [],
+        isArchived: task.isArchived,
         timeMs: entry.timeMs,
       });
     }
   }
-  entries.sort((a, b) => a.date.localeCompare(b.date) || String(a.title || "").localeCompare(String(b.title || "")));
-  return { entries, totalMs: entries.reduce((sum, entry) => sum + entry.timeMs, 0) };
+  entries.sort((a, b) => a.date.localeCompare(b.date) || String(a.title || "").localeCompare(String(b.title || "")) || a.taskId.localeCompare(b.taskId));
+  return { entries, totalMs: entries.reduce((sum, entry) => sum + entry.timeMs, 0), coverage };
 }
 
 function normalizeWorklogEntries(task) {

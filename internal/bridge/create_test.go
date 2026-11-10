@@ -52,18 +52,26 @@ type attachServer struct {
 	attachCode  int
 	attachBody  string
 	attachCalls []map[string]any
+	taskDueDay  any
 }
 
 func (s *attachServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if r.Method == http.MethodGet && r.URL.Path == "/status" {
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/task-repeat-cfgs":
+		// The pre-create probe of the attach route.
 		w.WriteHeader(s.statusCode)
 		if s.statusCode == 200 {
-			_, _ = io.WriteString(w, `{"ok":true,"data":{"currentTask":null}}`)
+			_, _ = io.WriteString(w, `{"ok":true,"data":[]}`)
 		} else {
 			_, _ = io.WriteString(w, `{"ok":false,"error":{"code":"APP_NOT_READY","message":"Renderer is not ready yet"}}`)
 		}
+		return
+	case r.Method == http.MethodGet:
+		// Read-back of the created task's day.
+		b, _ := json.Marshal(map[string]any{"ok": true, "data": map[string]any{"id": "fx-created-1", "dueDay": s.taskDueDay}})
+		_, _ = w.Write(b)
 		return
 	}
 	var body map[string]any
@@ -214,5 +222,37 @@ func TestCreateWithRepeatOnTheLegacyRouteUsesThePlugin(t *testing.T) {
 	creates := p.creates()
 	if len(creates) != 1 || creates[0].Payload["repeat"] == nil {
 		t.Fatalf("legacy create %#v", creates)
+	}
+}
+
+func TestCreateWithRepeatRefusesSubtasksBeforeCreating(t *testing.T) {
+	s := okAttach()
+	p, r := newCreateRouter(t, s)
+	_, err := call(r, "task.create", map[string]any{"title": "Fixture", "parentId": "fx-parent", "repeat": map[string]any{"cycle": "daily"}})
+	if code(t, err) != "INVALID_REQUEST" || len(p.creates()) != 0 || len(s.attachCalls) != 0 {
+		t.Fatalf("err %v creates %d", err, len(p.creates()))
+	}
+}
+
+func TestCreateWithRepeatAndTimeLetsTheAppPickTheStart(t *testing.T) {
+	s := okAttach()
+	_, r := newCreateRouter(t, s)
+	if _, err := call(r, "task.create", map[string]any{"title": "Fixture", "dueDate": "2026-11-09", "dueTime": "09:00", "repeat": map[string]any{"cycle": "daily"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := s.attachCalls[0]["startDate"]; has {
+		t.Fatalf("startDate sent with a time: %#v", s.attachCalls[0])
+	}
+}
+
+func TestWeeklyRepeatUsesTheCreatedTasksDay(t *testing.T) {
+	s := okAttach()
+	s.taskDueDay = "2026-11-13" // a Friday, as "@fri" short syntax would set
+	_, r := newCreateRouter(t, s)
+	if _, err := call(r, "task.create", map[string]any{"title": "Fixture @fri", "repeat": map[string]any{"cycle": "weekly", "every": float64(2)}}); err != nil {
+		t.Fatal(err)
+	}
+	if s.attachCalls[0]["friday"] != true || s.attachCalls[0]["tuesday"] != false {
+		t.Fatalf("attach %#v", s.attachCalls[0])
 	}
 }

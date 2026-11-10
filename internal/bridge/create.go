@@ -2,8 +2,10 @@ package bridge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -93,21 +95,21 @@ func (r *Router) createWithRepeat(ctx context.Context, req domain.Request) (doma
 	if !ok {
 		return domain.Response{}, invalid("repeat must be an object")
 	}
-	dueDate := stringArg(req.Payload, "dueDate", "due_date")
-	body, err := compactRepeatBody(repeat, func() (string, error) {
-		if dueDate != "" {
-			return dueDate, nil
-		}
-		return r.logicalToday(ctx)
-	})
-	if err != nil {
+	if stringArg(req.Payload, "parentId", "parent_id") != "" {
+		// The app refuses to make a subtask repeat; refuse before creating it.
+		return domain.Response{}, invalid("A subtask cannot repeat; create a top-level task with repeat, or drop parentId")
+	}
+	// Validate now. A placeholder start day is enough: the real one is only
+	// needed for a weekly repeat every N weeks without weekdays.
+	if _, err := compactRepeatBody(repeat, func() (string, error) { return "2000-01-03", nil }); err != nil {
 		return domain.Response{}, err
 	}
-	if dueDate != "" {
-		body["startDate"] = dueDate
-	}
-	// Check the attach route before creating anything.
-	if _, err := r.rest.Do(ctx, localrest.Request{Method: http.MethodGet, Path: "/status"}); err != nil {
+	dueDate := stringArg(req.Payload, "dueDate", "due_date")
+	hasTime := stringArg(req.Payload, "dueTime", "due_time") != ""
+	// Check the attach route itself before creating anything. A project id
+	// that matches nothing keeps the answer empty.
+	probe := localrest.Request{Method: http.MethodGet, Path: "/task-repeat-cfgs", Query: url.Values{"projectId": {"mcp-route-probe"}}}
+	if _, err := r.rest.Do(ctx, probe); err != nil {
 		return domain.Response{}, err
 	}
 	plugin, err := r.pluginBridge()
@@ -125,21 +127,70 @@ func (r *Router) createWithRepeat(ctx context.Context, req domain.Request) (doma
 		return created, nil
 	}
 	result := cloneWith(created.Result, nil)
+	fail := func(err error) (domain.Response, error) {
+		var te domain.TypedError
+		if !errors.As(err, &te) {
+			te = domain.TypedError{Code: "RECURRENCE_FAILED", Message: err.Error()}
+		}
+		// The task exists: report the failure next to its id so nobody
+		// retries the creation.
+		result["recurrenceError"] = map[string]any{"code": te.Code, "message": te.Message}
+		return domain.Response{Result: result}, nil
+	}
+	body, err := compactRepeatBody(repeat, func() (string, error) {
+		if dueDate != "" {
+			return dueDate, nil
+		}
+		// The app starts the recurrence on the task's day, which short syntax
+		// such as @fri may have set; read it back.
+		if day, err := r.taskDay(ctx, taskID); err != nil || day != "" {
+			return day, err
+		}
+		return r.logicalToday(ctx)
+	})
+	if err != nil {
+		return fail(err)
+	}
+	// With a time, the app derives the start from the task's own day; a
+	// startDate earlier than its logical today would be refused.
+	if dueDate != "" && !hasTime {
+		body["startDate"] = dueDate
+	}
 	body["taskId"] = taskID
 	data, err := r.rest.Do(ctx, localrest.Request{Method: http.MethodPost, Path: "/task-repeat-cfgs", Body: body, Mutation: true})
-	if err == nil {
-		if _, id, _ := decodeCfg(data); id != "" {
-			result["repeatCfgId"] = id
-			return domain.Response{Result: result}, nil
-		}
-		err = unconfirmed("recurrence attach")
+	if err != nil {
+		return fail(err)
 	}
-	var te domain.TypedError
-	if !errors.As(err, &te) {
-		te = domain.TypedError{Code: "RECURRENCE_FAILED", Message: err.Error()}
+	if _, id, _ := decodeCfg(data); id != "" {
+		result["repeatCfgId"] = id
+		return domain.Response{Result: result}, nil
 	}
-	// The task exists: report the failure next to its id so nobody retries
-	// the creation.
-	result["recurrenceError"] = map[string]any{"code": te.Code, "message": te.Message}
-	return domain.Response{Result: result}, nil
+	return fail(unconfirmed("recurrence attach"))
+}
+
+// taskDay is the day a task is filed under: its dueDay, or the local day of
+// its dueWithTime; "" when it has neither.
+func (r *Router) taskDay(ctx context.Context, taskID string) (string, error) {
+	path, err := localrest.SegmentPath("tasks", taskID)
+	if err != nil {
+		return "", err
+	}
+	data, err := r.rest.Do(ctx, localrest.Request{Method: http.MethodGet, Path: path})
+	if err != nil {
+		return "", err
+	}
+	var task struct {
+		DueDay      string  `json:"dueDay"`
+		DueWithTime float64 `json:"dueWithTime"`
+	}
+	if err := json.Unmarshal(data, &task); err != nil {
+		return "", malformedRead("task")
+	}
+	if validDate(task.DueDay) {
+		return task.DueDay, nil
+	}
+	if task.DueWithTime > 0 {
+		return time.UnixMilli(int64(task.DueWithTime)).Format("2006-01-02"), nil
+	}
+	return "", nil
 }

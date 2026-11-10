@@ -75,6 +75,11 @@ func deadlinePatch(payload map[string]any) (map[string]any, error) {
 			return nil, invalid("dueDay does not match the day of dueWithTime; a timed task is filed by its time")
 		}
 	}
+	// Same schedule rules as the plugin path: a timed task is filed by its
+	// time, so setting a time clears dueDay.
+	if _, timed := body["dueWithTime"].(float64); timed {
+		body["dueDay"] = nil
+	}
 	if _, ok := body["title"]; ok {
 		// Titles are stored literally, never parsed as short syntax.
 		body["isIgnoreShortSyntax"] = true
@@ -109,6 +114,25 @@ func (r *Router) updateWithDeadline(ctx context.Context, req domain.Request) (do
 	path, err := localrest.SegmentPath("tasks", taskID)
 	if err != nil {
 		return domain.Response{}, err
+	}
+	// A dueDay alone on a task that has a time is refused, as on the plugin
+	// path: it would leave both a day and a time.
+	if day, ok := body["dueDay"]; ok && day != nil {
+		if _, setsTime := body["dueWithTime"]; !setsTime {
+			current, err := r.rest.Do(ctx, localrest.Request{Method: http.MethodGet, Path: path})
+			if err != nil {
+				return domain.Response{}, err
+			}
+			var task struct {
+				DueWithTime float64 `json:"dueWithTime"`
+			}
+			if json.Unmarshal(current, &task) != nil {
+				return domain.Response{}, malformedRead("task")
+			}
+			if task.DueWithTime > 0 {
+				return domain.Response{}, invalid("This task has a time. To make it day-only, pass dueWithTime:null together with dueDay; to move it, pass a new dueWithTime.")
+			}
+		}
 	}
 	data, err := r.rest.Do(ctx, localrest.Request{Method: http.MethodPatch, Path: path, Body: body, Mutation: true})
 	if err != nil {

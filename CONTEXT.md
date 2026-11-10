@@ -23,7 +23,8 @@ installable artifacts.
   token). It is used only for actions the router maps to it.
 - **Router** — `internal/bridge`, the `domain.Bridge` both entrypoints build.
   It picks Local REST or plugin IPC for each action before sending, and never
-  retries a failed call through the other adapter. See
+  retries a failed write through the other adapter (one read,
+  `get_habit_history`, falls back from the plugin to REST). See
   [ADR 0003](docs/adr/0003-local-rest-routing.md).
 - **MCP adapter** — the JSON-RPC/MCP layer that exposes catalog tools/resources
   and dispatches validated calls to the bridge.

@@ -37,11 +37,11 @@ type route struct {
 // restRoutes are the actions that use Local REST when it is configured.
 var restRoutes = map[string]route{
 	"task.archive": {rest: archiveTask},
-	"task.restore": {rest: restoreTask},
+	"task.restore": {rest: restoreTask, needsREST: true},
 
 	"task.start":   {rest: startTask},
 	"task.stop":    {rest: stopTask},
-	"task.current": {rest: currentTask},
+	"task.current": {rest: currentTask, needsREST: true},
 
 	"note.list": {rest: listNotes},
 	"note.get":  {rest: getNote},

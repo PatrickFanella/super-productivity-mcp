@@ -58,6 +58,14 @@ func (s *noteStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ok(201, note)
 		return
 	}
+	if len(parts) == 1 {
+		list := []any{}
+		for _, n := range s.notes {
+			list = append(list, n)
+		}
+		ok(200, list)
+		return
+	}
 	note := s.notes[parts[1]]
 	if note == nil {
 		fail(404, "NOTE_NOT_FOUND")

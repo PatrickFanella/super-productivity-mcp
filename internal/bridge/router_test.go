@@ -362,13 +362,14 @@ func TestRestoreFailuresStayExplicit(t *testing.T) {
 	}
 }
 
-func TestRestoreUsesPluginWhenRESTIsNotConfigured(t *testing.T) {
-	plugin := &fakePlugin{result: map[string]any{}}
-	r := NewWith(nil, func() (domain.Bridge, error) { return plugin, nil })
-	if _, err := r.Call(context.Background(), domain.Request{Action: "task.restore", Payload: map[string]any{"taskId": "x"}}); err != nil {
-		t.Fatalf("Call: %v", err)
-	}
-	if len(plugin.calls) != 1 || plugin.calls[0].Action != "task.restore" {
-		t.Fatalf("plugin calls %#v", plugin.calls)
+func TestRestoreAndCurrentWithoutRESTFailAtOnce(t *testing.T) {
+	// The plugin has no restore or current-task read, so the router answers
+	// UNSUPPORTED_ACTION itself instead of waiting on the plugin.
+	r := NewWith(nil, unavailablePlugin(t))
+	for _, action := range []string{"task.restore", "task.current"} {
+		_, err := r.Call(context.Background(), domain.Request{Action: action, Payload: map[string]any{"taskId": "x"}})
+		if got := code(t, err); got != "UNSUPPORTED_ACTION" {
+			t.Fatalf("%s: code = %s", action, got)
+		}
 	}
 }

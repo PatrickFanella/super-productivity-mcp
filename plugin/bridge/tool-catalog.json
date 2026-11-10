@@ -225,7 +225,8 @@
           "deadlineDay": { "type": ["string", "null"], "description": "A true deadline day, YYYY-MM-DD, separate from planned work. Mutually exclusive with deadlineWithTime." },
           "deadlineWithTime": { "type": ["integer", "null"], "description": "A true deadline with a time, in milliseconds." },
           "deadlineRemindAt": { "type": ["integer", "null"], "description": "Deadline reminder time, in milliseconds; null clears only the reminder." }
-        }
+        },
+        "required": ["taskId"]
       },
       "outputSchema": {
         "type": "object",
@@ -244,7 +245,7 @@
     {
       "mcpName": "set_task_recurrence",
       "action": "task.setRecurrence",
-      "description": "Make an existing top-level task recurring through Super Productivity's Local REST API (POST /task-repeat-cfgs), which the MCP server calls directly. Writable: quickSetting, startDate, repeatCycle, repeatEvery and weekdays (the last three with quickSetting CUSTOM; repeatCycle alone picks DAILY or CUSTOM), isPaused and skipOverdue. Any other field, such as startTime, notes, subTaskTemplates or the completion-based flags, fails with UNSUPPORTED_FIELD before anything is written. The app copies title, notes, tags, estimate and time from the task. SP_MCP_RECURRENCE_ROUTE=plugin selects the legacy plugin path, for patched app builds only.",
+      "description": "Make an existing top-level task recurring through Super Productivity's Local REST API (POST /task-repeat-cfgs), which the MCP server calls directly. Give quickSetting, repeatCycle or both. Writable: quickSetting, startDate, repeatCycle, repeatEvery and weekdays (the last three with quickSetting CUSTOM; repeatCycle alone picks DAILY or CUSTOM), isPaused and skipOverdue. Any other field, such as startTime, notes, subTaskTemplates or the completion-based flags, fails with UNSUPPORTED_FIELD before anything is written. The app copies title, notes, tags, estimate and time from the task. SP_MCP_RECURRENCE_ROUTE=plugin selects the legacy plugin path, for patched app builds only.",
       "title": "Make task recurring",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
@@ -293,8 +294,7 @@
               "should_inherit_subtasks": { "type": "boolean" },
               "disableAutoUpdateSubtasks": { "type": "boolean" },
               "disable_auto_update_subtasks": { "type": "boolean" }
-            },
-            "required": ["repeatCycle"]
+            }
           }
         },
         "required": ["taskId", "recurrence"]
@@ -547,7 +547,7 @@
         "type": "object",
         "properties": {
           "taskId": { "type": "string" },
-          "timeMs": { "type": "integer", "minimum": 0 },
+          "timeMs": { "type": "integer", "minimum": 1, "maximum": 86400000 },
           "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
         },
         "required": ["taskId", "timeMs"]

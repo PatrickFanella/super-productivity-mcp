@@ -73,6 +73,7 @@ func TestUnsupportedRecurrenceInputMakesNoRequest(t *testing.T) {
 		{"task.updateRecurrence", map[string]any{"taskId": "fx-recurring", "changes": map[string]any{"defaultEstimate": float64(60000)}}, "UNSUPPORTED_FIELD"},
 		{"task.updateRecurrence", map[string]any{"taskId": "fx-recurring", "changes": map[string]any{"isPaused": true}, "isAskToUpdateAllTaskInstances": true}, "UNSUPPORTED_FIELD"},
 		{"task.updateRecurrence", map[string]any{"taskId": "fx-recurring", "changes": map[string]any{}}, "NO_UPDATE_FIELDS"},
+		{"task.setRecurrence", map[string]any{"taskId": "fx-day-today", "recurrence": map[string]any{"isPaused": true}}, "INVALID_REQUEST"},
 	}
 	for _, c := range cases {
 		s, r := newRepeatServer(t)

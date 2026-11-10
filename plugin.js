@@ -1189,20 +1189,45 @@
     return { moved: true };
   }
 
+  // Counts leaf tasks only: subtask time is rolled up into the parent's
+  // timeSpentOnDay. Mirrors plugin/bridge/actions/task-mutate.js.
   async function taskWorklog(payload) {
-    const startDate = valueOf(payload || {}, 'startDate', 'start_date');
-    const endDate = valueOf(payload || {}, 'endDate', 'end_date') || startDate;
-    const tasks = await PluginAPI.getTasks();
+    payload = payload || {};
+    const startDate = valueOf(payload, 'startDate', 'start_date');
+    const endDate = valueOf(payload, 'endDate', 'end_date') || startDate;
+    for (const [name, value] of [['startDate', startDate], ['endDate', endDate]]) {
+      if (value != null && !isLocalDateString(value)) throw typedError('INVALID_REQUEST', name + ' must be YYYY-MM-DD', false);
+    }
+    if (startDate && endDate && endDate < startDate) throw typedError('INVALID_REQUEST', 'endDate must not be before startDate', false);
+    const projectId = valueOf(payload, 'projectId', 'project_id');
+    const includeArchived = valueOf(payload, 'includeArchived', 'include_archived') === true;
+
+    const tasks = (await PluginAPI.getTasks()).map((t) => Object.assign({}, t, { isArchived: false }));
+    const coverage = { activeIncluded: true, archivedIncluded: false, complete: false, reason: 'archived tasks not requested; pass includeArchived:true' };
+    if (includeArchived) {
+      if (typeof PluginAPI.getArchivedTasks === 'function') {
+        for (const t of await PluginAPI.getArchivedTasks()) tasks.push(Object.assign({}, t, { isArchived: true }));
+        coverage.archivedIncluded = true;
+        coverage.complete = true;
+        delete coverage.reason;
+      } else {
+        coverage.reason = 'this Super Productivity runtime cannot read archived tasks';
+      }
+    }
+
+    const parentIds = new Set(tasks.filter((t) => t.parentId).map((t) => t.parentId));
     const entries = [];
     for (const task of tasks) {
+      if (parentIds.has(task.id) || (Array.isArray(task.subTaskIds) && task.subTaskIds.length > 0)) continue;
+      if (projectId && task.projectId !== projectId) continue;
       for (const entry of normalizeWorklogEntries(task)) {
         if (startDate && entry.date < startDate) continue;
         if (endDate && entry.date > endDate) continue;
-        entries.push({ date: entry.date, taskId: task.id, title: task.title, projectId: task.projectId, tagIds: task.tagIds || [], timeMs: entry.timeMs });
+        entries.push({ date: entry.date, taskId: task.id, title: task.title, projectId: task.projectId, parentId: task.parentId || null, tagIds: task.tagIds || [], isArchived: task.isArchived, timeMs: entry.timeMs });
       }
     }
-    entries.sort((a, b) => a.date.localeCompare(b.date) || String(a.title || '').localeCompare(String(b.title || '')));
-    return { entries, totalMs: entries.reduce((sum, entry) => sum + entry.timeMs, 0) };
+    entries.sort((a, b) => a.date.localeCompare(b.date) || String(a.title || '').localeCompare(String(b.title || '')) || a.taskId.localeCompare(b.taskId));
+    return { entries, totalMs: entries.reduce((sum, entry) => sum + entry.timeMs, 0), coverage };
   }
 
   function normalizeWorklogEntries(task) {

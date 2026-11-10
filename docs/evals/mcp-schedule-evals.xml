@@ -39,4 +39,8 @@
     <question>An agent wants incomplete tasks planned today with concise synthetic metadata via a resource. Which resource URI should it read?</question>
     <answer>sp://schedule/today</answer>
   </qa_pair>
+  <qa_pair>
+    <question>A weekly review needs tracked time that includes tasks archived during the week, and must say whether the total is complete. Which get_worklog argument includes archived work, and which result field reports completeness?</question>
+    <answer>includeArchived=true; coverage.complete</answer>
+  </qa_pair>
 </evaluation>

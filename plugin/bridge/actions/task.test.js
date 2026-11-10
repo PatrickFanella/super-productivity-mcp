@@ -591,9 +591,18 @@ test("task.worklog summarizes tracked time within a date range", async () => {
 
   assert.equal(out.totalMs, 150000);
   assert.deepEqual(out.entries, [
-    { date: "2026-05-13", taskId: "a", title: "A", projectId: "p1", tagIds: ["t1"], timeMs: 120000 },
-    { date: "2026-05-13", taskId: "b", title: "B", projectId: "p2", tagIds: [], timeMs: 30000 },
+    { date: "2026-05-13", taskId: "a", title: "A", projectId: "p1", parentId: null, tagIds: ["t1"], isArchived: false, timeMs: 120000 },
+    { date: "2026-05-13", taskId: "b", title: "B", projectId: "p2", parentId: null, tagIds: [], isArchived: false, timeMs: 30000 },
   ]);
+  assert.equal(out.coverage.complete, false);
+});
+
+test("task.worklog rejects invalid date ranges before reading", async () => {
+  let read = false;
+  global.PluginAPI = { getTasks: async () => { read = true; return []; } };
+  await assert.rejects(taskActions["task.worklog"]({ startDate: "2026-5-1" }), { code: "INVALID_REQUEST" });
+  await assert.rejects(taskActions["task.worklog"]({ startDate: "2026-05-02", endDate: "2026-05-01" }), { code: "INVALID_REQUEST" });
+  assert.equal(read, false);
 });
 
 test("task.list includeDone=false filters completed tasks", async () => {

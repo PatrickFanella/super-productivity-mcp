@@ -117,7 +117,7 @@ Source: [Developer work log template](https://super-productivity.com/blog/develo
 The log records outcomes, blockers and restart points, not activity.
 
 1. Read the day's tracked time:
-   `get_worklog {"startDate": "2026-11-09", "endDate": "2026-11-09"}`.
+   `get_worklog {"startDate": "2026-11-09", "endDate": "2026-11-09", "includeArchived": true}`.
 2. For each task with time, report its outcome, the time spent against its
    `timeEstimate`, any blocker or decision, and the cue for resuming it. Ask the
    user for outcomes the tool results cannot show.
@@ -125,17 +125,16 @@ The log records outcomes, blockers and restart points, not activity.
    adjustment for tomorrow. Put them where the user keeps such notes; do not
    create a task for them unless asked.
 4. For a weekly review, read the week
-   (`get_worklog {"startDate": "2026-11-02", "endDate": "2026-11-08"}`) and
+   (`get_worklog {"startDate": "2026-11-02", "endDate": "2026-11-08", "includeArchived": true}`) and
    produce a calibration note (estimates against time spent), a status update
    and one change for next week.
 
 Elapsed time is not a performance score. Keep secrets and private notes out
 of anything shared with a team.
 
-`get_worklog` currently reads active tasks only and counts a parent's rolled-up
-time as well as its subtasks' time. Until that is fixed, report per-task
-entries and state that the total may double-count parent tasks and omits
-archived work.
+`get_worklog` counts leaf tasks only, so a parent's rolled-up time is not
+added twice. Pass `includeArchived: true` for history that includes archived
+tasks, and check `coverage.complete` before calling a total complete.
 
 ## Waiting For
 

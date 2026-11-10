@@ -48,6 +48,12 @@ The Go server talks to Local REST itself:
 - Settings that are present but unusable make the REST-mapped actions fail
   with `LOCAL_REST_MISCONFIGURED`. They do not quietly fall back to plugin IPC.
 
+Some routed actions have no supported plugin path on stock v20: recurrence
+writes, for example, dispatch actions the app refuses. Those are marked as
+needing REST and fail with `UNSUPPORTED_ACTION` before anything is sent when
+REST is not configured. `SP_MCP_RECURRENCE_ROUTE=plugin` explicitly selects
+the old plugin dispatch for app builds that allow it.
+
 `task.archive` is the first routed action. Without Local REST it still goes to
 the plugin, which only marks the task done when the caller passes
 `allowDoneFallback:true`. Later changes add actions to the route table one at

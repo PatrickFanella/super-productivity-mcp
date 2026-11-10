@@ -211,7 +211,8 @@ for (const [action, payload, actionType] of [
   ["task.updateRecurrence", { taskId: "fx-recurring", changes: { isPaused: true } }, "[TaskRepeatCfg] Update TaskRepeatCfg"],
   ["task.deleteRecurrence", { taskId: "fx-recurring" }, "[Task Shared] deleteTaskRepeatCfg"],
 ]) {
-  test(`baseline gap (#22, #23): ${action} dispatches an action stock v20 refuses`, async () => {
+  // The router only sends these to the plugin when SP_MCP_RECURRENCE_ROUTE=plugin (#23).
+  test(`legacy plugin path: ${action} dispatches an action stock v20 refuses`, async () => {
     const both = await runBoth(action, payload);
     assertSameOutcome(both);
     for (const side of [both.modular, both.packaged]) {

@@ -48,3 +48,14 @@ func TestLoadLocalRESTSettings(t *testing.T) {
 		t.Fatalf("unexpected REST settings: %+v", cfg)
 	}
 }
+
+func TestLoadRecurrenceRoute(t *testing.T) {
+	t.Setenv("SP_MCP_RECURRENCE_ROUTE", " Plugin ")
+	if got := Load().RecurrenceRoute; got != RecurrenceRoutePlugin {
+		t.Fatalf("RecurrenceRoute = %q", got)
+	}
+	t.Setenv("SP_MCP_RECURRENCE_ROUTE", "")
+	if got := Load().RecurrenceRoute; got != "" {
+		t.Fatalf("RecurrenceRoute = %q", got)
+	}
+}

@@ -22,19 +22,42 @@ import (
 // restRoute delivers one catalog action through Local REST.
 type restRoute func(ctx context.Context, rest *localrest.Client, payload map[string]any) (map[string]any, error)
 
-// restRoutes are the actions that use Local REST when it is configured.
-var restRoutes = map[string]restRoute{
-	"task.archive": archiveTask,
-	"task.restore": restoreTask,
+// route maps an action to Local REST. needsREST marks actions with no
+// supported plugin path on stock v20: without REST they fail before
+// anything is sent instead of reaching the plugin.
+type route struct {
+	rest      restRoute
+	needsREST bool
+}
 
-	"task.listRecurrences": listRecurrences,
-	"task.getRecurrence":   getRecurrence,
+// restRoutes are the actions that use Local REST when it is configured.
+var restRoutes = map[string]route{
+	"task.archive": {rest: archiveTask},
+	"task.restore": {rest: restoreTask},
+
+	"task.listRecurrences": {rest: listRecurrences},
+	"task.getRecurrence":   {rest: getRecurrence},
+
+	"task.setRecurrence":    {rest: setRecurrence, needsREST: true},
+	"task.updateRecurrence": {rest: updateRecurrence, needsREST: true},
+	"task.deleteRecurrence": {rest: deleteRecurrence, needsREST: true},
+}
+
+// legacyRecurrenceActions go to the plugin's repeat-config dispatch when
+// SP_MCP_RECURRENCE_ROUTE=plugin selects it. Stock v20 refuses those
+// dispatches; only a patched app that allows them should select it.
+var legacyRecurrenceActions = map[string]bool{
+	"task.setRecurrence":    true,
+	"task.updateRecurrence": true,
+	"task.deleteRecurrence": true,
 }
 
 // Router implements domain.Bridge over Local REST and plugin IPC.
 type Router struct {
 	rest    *localrest.Client
 	restErr error // set when REST was configured but is unusable
+	// legacyRecurrence sends recurrence writes to the plugin's dispatch.
+	legacyRecurrence bool
 
 	newPlugin func() (domain.Bridge, error)
 	mu        sync.Mutex
@@ -47,7 +70,10 @@ var _ domain.Bridge = (*Router)(nil)
 // Local REST setting is reported by RESTError and by every REST-mapped call,
 // and plugin IPC is set up on first use.
 func New(cfg config.Config) *Router {
-	r := &Router{newPlugin: func() (domain.Bridge, error) { return pluginipc.NewClient(cfg) }}
+	r := &Router{
+		newPlugin:        func() (domain.Bridge, error) { return pluginipc.NewClient(cfg) },
+		legacyRecurrence: cfg.RecurrenceRoute == config.RecurrenceRoutePlugin,
+	}
 	if strings.TrimSpace(cfg.LocalRESTURL) != "" {
 		r.rest, r.restErr = localrest.New(localrest.Config{
 			BaseURL:     cfg.LocalRESTURL,
@@ -70,16 +96,22 @@ func (r *Router) RESTError() error { return r.restErr }
 
 // Call delivers req through the adapter its action is routed to.
 func (r *Router) Call(ctx context.Context, req domain.Request) (domain.Response, error) {
-	if route, ok := restRoutes[req.Action]; ok {
+	if rt, ok := restRoutes[req.Action]; ok && !(r.legacyRecurrence && legacyRecurrenceActions[req.Action]) {
 		if r.restErr != nil {
 			return domain.Response{}, r.restErr
 		}
 		if r.rest != nil {
-			result, err := route(ctx, r.rest, req.Payload)
+			result, err := rt.rest(ctx, r.rest, req.Payload)
 			if err != nil {
 				return domain.Response{}, err
 			}
 			return domain.Response{Result: result}, nil
+		}
+		if rt.needsREST {
+			return domain.Response{}, domain.TypedError{
+				Code:    "UNSUPPORTED_ACTION",
+				Message: "This needs Super Productivity's Local REST API: set SP_LOCAL_REST_URL (stock v20: http://127.0.0.1:3876) and SP_LOCAL_REST_TOKEN. Only on an app build that allows plugin repeat-config actions, SP_MCP_RECURRENCE_ROUTE=plugin selects the legacy plugin path instead. Nothing was changed.",
+			}
 		}
 	}
 	plugin, err := r.pluginBridge()

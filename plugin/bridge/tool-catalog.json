@@ -228,7 +228,7 @@
     {
       "mcpName": "set_task_recurrence",
       "action": "task.setRecurrence",
-      "description": "Make an existing Super Productivity task recurring by creating and linking a TaskRepeatCfg. Requires a Super Productivity build that allows repeat cfg plugin actions.",
+      "description": "Make an existing top-level task recurring through Super Productivity's Local REST API (POST /task-repeat-cfgs), which the MCP server calls directly. Writable: quickSetting, startDate, repeatCycle, repeatEvery and weekdays (the last three with quickSetting CUSTOM; repeatCycle alone picks DAILY or CUSTOM), isPaused and skipOverdue. Any other field, such as startTime, notes, subTaskTemplates or the completion-based flags, fails with UNSUPPORTED_FIELD before anything is written. The app copies title, notes, tags, estimate and time from the task. SP_MCP_RECURRENCE_ROUTE=plugin selects the legacy plugin path, for patched app builds only.",
       "title": "Make task recurring",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false },
@@ -295,7 +295,7 @@
     {
       "mcpName": "update_task_recurrence",
       "action": "task.updateRecurrence",
-      "description": "Update the repeat config linked to an existing recurring task. Requires the task to already have repeatCfgId.",
+      "description": "Update the repeat config of a recurring task (found from a fresh task read) through Local REST (PATCH /task-repeat-cfgs/:id). Same writable fields as set_task_recurrence; others fail with UNSUPPORTED_FIELD before anything is written. The schedule changes as a whole: a startDate-only change re-applies the current preset, and repeatCycle, repeatEvery or weekdays need quickSetting CUSTOM. The app moves the newest unfinished instance to the next matching day. isAskToUpdateAllTaskInstances works only on the legacy plugin path.",
       "title": "Update task recurrence",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },
@@ -359,7 +359,7 @@
     {
       "mcpName": "delete_task_recurrence",
       "action": "task.deleteRecurrence",
-      "description": "Remove recurrence from a recurring task by deleting its TaskRepeatCfg and unlinking task instances.",
+      "description": "Stop a task repeating by deleting its repeat config (found from a fresh task read) through Local REST (DELETE /task-repeat-cfgs/:id). The app keeps the config's tasks; they no longer repeat.",
       "title": "Remove task recurrence",
       "scope": "write",
       "annotations": { "readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false },

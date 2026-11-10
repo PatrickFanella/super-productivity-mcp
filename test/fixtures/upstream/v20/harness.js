@@ -137,6 +137,11 @@ function createPluginApi(overrides = {}) {
       state.pluginCounters[id] = value;
     },
     showSnack: async (cfg) => record("showSnack", cfg),
+    incrementCounter: async (id, by) => {
+      record("incrementCounter", id, by);
+      state.pluginCounters[id] = (state.pluginCounters[id] || 0) + by;
+      return state.pluginCounters[id];
+    },
     notify: async (cfg) => record("notify", cfg),
   };
   for (const [name, value] of Object.entries(overrides)) {
@@ -147,7 +152,7 @@ function createPluginApi(overrides = {}) {
 }
 
 function writes(calls) {
-  return calls.filter((call) => ["updateTask", "addTask", "deleteTask", "startTracking", "stopTracking", "dispatchAction", "setCounter"].includes(call.method));
+  return calls.filter((call) => ["updateTask", "addTask", "deleteTask", "startTracking", "stopTracking", "dispatchAction", "setCounter", "incrementCounter", "showSnack"].includes(call.method));
 }
 
 function errorShape(err) {

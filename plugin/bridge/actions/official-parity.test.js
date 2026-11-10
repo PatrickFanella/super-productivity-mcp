@@ -70,7 +70,7 @@ test("task.createWithSubtasks parses titles once and lets subtasks inherit proje
   const { added } = pluginWithTasks([], { updateTask: async () => {} });
   await handlers["task.createWithSubtasks"]({
     title: "Launch #shopping +wor",
-    subtasks: [{ title: "Copy #shopping 30m", tagIds: ["tag-x"] }],
+    subtasks: [{ title: "Copy #shopping 30m" }],
   });
   assert.equal(added[0].projectId, "proj-1");
   assert.deepEqual(added[0].tagIds, ["tag-1"]);

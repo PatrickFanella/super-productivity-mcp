@@ -120,6 +120,11 @@ async function taskCreateWithSubtasks(payload) {
   if (!Array.isArray(payload?.subtasks)) {
     throw typedError("INVALID_REQUEST", "subtasks must be an array", false);
   }
+  // A subtask has no tags of its own in the app; refuse them before creating
+  // anything rather than drop them.
+  if (payload.subtasks.some((subtask) => (valueOf(subtask || {}, "tagIds", "tag_ids") || []).length > 0)) {
+    throw typedError("INVALID_REQUEST", "Subtasks cannot have their own tags; tag the parent task instead", false);
+  }
   const parent = await createTask(await buildTaskData(payload));
   const parentId = parent.taskId;
   const subtaskIds = [];

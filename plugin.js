@@ -305,6 +305,7 @@
 
   async function taskCreateWithSubtasks(payload) {
     if (!Array.isArray(payload && payload.subtasks)) throw typedError('INVALID_REQUEST', 'subtasks must be an array', false);
+    if (payload.subtasks.some((subtask) => (valueOf(subtask || {}, 'tagIds', 'tag_ids') || []).length > 0)) throw typedError('INVALID_REQUEST', 'Subtasks cannot have their own tags; tag the parent task instead', false);
     const parent = await createTask(await buildTaskData(payload));
     const parentId = parent.taskId;
     const subtaskIds = [];
@@ -655,9 +656,9 @@
         if (!task) throw typedError('TASK_NOT_FOUND', 'Task ' + entry.taskId + ' not found', false);
         const result = { id: entry.taskId, success: true };
         if (entry.note) result.note = entry.note;
-        const changes = diffTaskPatch(task, entry.patch);
+        const changes = diffTaskPatch(task, entry.patch).filter((change) => (change.before == null ? null : change.before) !== change.after);
         if (changes.length) result.changes = changes;
-        if (!dryRun && changes.length) await PluginAPI.updateTask(entry.taskId, entry.patch);
+        if (!dryRun && changes.length) await PluginAPI.updateTask(entry.taskId, Object.fromEntries(changes.map((change) => [change.field, change.after])));
         results.push(result);
       } catch (err) { results.push({ id: entry.taskId, success: false, error: err.message || String(err) }); }
     }
@@ -1114,7 +1115,7 @@
       if (!includeArchived && task.isArchived) continue;
       const schedule = taskSchedule(task);
       let patch = {};
-      if (schedule.kind === 'timed' && schedule.day === date) patch = scheduleWrite({ dueWithTime: null }, task);
+      if (schedule.kind === 'timed' && schedule.day === date) patch = scheduleWrite({ dueWithTime: null, dueDay: clearDueDay ? null : date }, task);
       if (clearDueDay && task.dueDay === date) patch.dueDay = null;
       if (Object.keys(patch).length > 0) entries.push({ taskId: task.id, patch });
     }
@@ -1243,6 +1244,25 @@
 
   // Mirrors task-schedule.js taskAutoSchedule.
   const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  function freeSlot(day, estimateMs) {
+    let start = day.nextMs;
+    for (let moved = true; moved; ) {
+      moved = false;
+      for (const busy of day.busy) {
+        if (start < busy[1] && start + estimateMs > busy[0]) { start = busy[1]; moved = true; }
+      }
+    }
+    return start;
+  }
+  function nextDayStartMs(date, timezone) {
+    const parts = date.split('-').map(Number);
+    const next = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + 1));
+    const nextDate = next.getUTCFullYear() + '-' + String(next.getUTCMonth() + 1).padStart(2, '0') + '-' + String(next.getUTCDate()).padStart(2, '0');
+    for (const time of ['00:00', '01:00', '02:00']) {
+      try { return resolveZonedWallTime(nextDate, time, timezone, 'earlier').ms; } catch (e) { /* try the next hour */ }
+    }
+    throw typedError('INVALID_REQUEST', 'cannot find the start of ' + nextDate + ' in ' + timezone, false);
+  }
   function weekdayOf(dateStr) {
     const parts = dateStr.split('-').map(Number);
     return WEEKDAY_KEYS[new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
@@ -1267,9 +1287,19 @@
     const parentIds = new Set(tasks.filter((task) => task.parentId).map((task) => task.parentId));
     const isLeaf = (task) => !parentIds.has(task.id) && !(Array.isArray(task.subTaskIds) && task.subTaskIds.length > 0);
     const estimateOf = (task) => (Number(task.timeEstimate) > 0 ? Number(task.timeEstimate) : defaultEstimateMs);
-    const days = localDateRange(startDate, endDate)
-      .filter((date) => workingDays.indexOf(weekdayOf(date)) !== -1)
-      .map((date) => ({ date, existingMs: 0, plannedMs: 0, busy: [], nextMs: resolveZonedWallTime(date, workStart, timezone, 'earlier').ms }));
+    const days = [];
+    const skippedDays = [];
+    for (const date of localDateRange(startDate, endDate).filter((d) => workingDays.indexOf(weekdayOf(d)) !== -1)) {
+      let startMs;
+      try {
+        startMs = resolveZonedWallTime(date, workStart, timezone, 'earlier').ms;
+      } catch (err) {
+        if (err.code !== 'INVALID_REQUEST' || /time zone/.test(err.message)) throw err;
+        skippedDays.push({ date, reason: 'workStart does not exist on this day (daylight saving change)' });
+        continue;
+      }
+      days.push({ date, existingMs: 0, plannedMs: 0, busy: [], nextMs: startMs, endMs: nextDayStartMs(date, timezone) });
+    }
     const dayByDate = new Map(days.map((day) => [day.date, day]));
     for (const task of tasks) {
       const schedule = taskSchedule(task);
@@ -1289,20 +1319,26 @@
     const updates = [];
     const skipped = [];
     for (const task of candidates) {
-      if (!topLevelOnly && tasks.some((child) => child.parentId === task.id && candidateIds.has(child.id))) {
-        skipped.push(Object.assign(compactTaskSummary(task), { reason: 'subtasks_scheduled_instead' }));
-        continue;
-      }
-      const estimateMs = estimateOf(task);
-      const day = days.find((candidate) => candidate.existingMs + candidate.plannedMs + estimateMs <= capacityMs);
-      if (!day) { skipped.push(Object.assign(compactTaskSummary(task), { reason: 'capacity_exhausted' })); continue; }
-      let start = day.nextMs;
-      for (let moved = true; moved; ) {
-        moved = false;
-        for (const busy of day.busy) {
-          if (start < busy[1] && start + estimateMs > busy[0]) { start = busy[1]; moved = true; }
+      if (!isLeaf(task)) {
+        const children = tasks.filter((child) => child.parentId === task.id);
+        if (!topLevelOnly || children.some((child) => taskSchedule(child).kind !== 'none')) {
+          const reason = children.some((child) => candidateIds.has(child.id)) && !topLevelOnly ? 'subtasks_scheduled_instead' : 'has_scheduled_subtasks';
+          skipped.push(Object.assign(compactTaskSummary(task), { reason }));
+          continue;
         }
       }
+      const estimateMs = estimateOf(task);
+      let placed = null;
+      for (const day of days) {
+        if (day.existingMs + day.plannedMs + estimateMs > capacityMs) continue;
+        const start = freeSlot(day, estimateMs);
+        if (start + estimateMs > day.endMs) continue;
+        placed = { day, start };
+        break;
+      }
+      if (!placed) { skipped.push(Object.assign(compactTaskSummary(task), { reason: 'capacity_exhausted' })); continue; }
+      const day = placed.day;
+      const start = placed.start;
       day.busy.push([start, start + estimateMs]);
       day.nextMs = start + estimateMs;
       day.plannedMs += estimateMs;
@@ -1312,6 +1348,7 @@
     const result = {
       dryRun, startDate, endDate, timezone, workingDays,
       capacity: days.map((day) => ({ date: day.date, existingMs: day.existingMs, plannedMs: day.plannedMs, capacityMs })),
+      skippedDays,
       updates, scheduledCount: updates.length, skipped,
     };
     if (!dryRun) {
@@ -1381,6 +1418,7 @@
   function isLocalDateString(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const parts = value.split('-').map(Number);
+    if (parts[0] < 1000) return false;
     const date = new Date(0);
     date.setUTCFullYear(parts[0], parts[1] - 1, parts[2]);
     return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 && date.getUTCDate() === parts[2];
@@ -1860,8 +1898,9 @@ async function attachGitea(payload = {}) {
     'note.delete': async () => { throw typedError('UNSUPPORTED_ACTION', 'Changing notes needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false); },
     'notification.show': async (payload) => {
       const message = (payload && payload.message) || '';
-      const type = String((payload && payload.type) || 'INFO').toUpperCase();
-      if (typeof PluginAPI.showSnack === 'function') await PluginAPI.showSnack({ message, msg: message, type });
+      const rawType = String((payload && payload.type) || 'INFO').toUpperCase();
+      const type = ['SUCCESS', 'INFO', 'WARNING', 'ERROR'].indexOf(rawType) === -1 ? 'INFO' : rawType;
+      if (typeof PluginAPI.showSnack === 'function') await PluginAPI.showSnack({ msg: message, message, type });
       else console.log('[notification:' + type + '] ' + message);
       return { shown: true, type };
     },
@@ -1892,13 +1931,13 @@ async function attachGitea(payload = {}) {
       const id = (payload && (payload.id || payload.counterId || payload.counter_id));
       if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
       if (typeof PluginAPI.incrementCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.incrementCounter is not available in this Super Productivity runtime', false);
-      return { id, value: await PluginAPI.incrementCounter(id, Number((payload && payload.delta) || 1)) };
+      return { id, value: await PluginAPI.incrementCounter(id, Number(payload && payload.delta != null ? payload.delta : 1)) };
     },
     'counter.decrement': async (payload) => {
       const id = (payload && (payload.id || payload.counterId || payload.counter_id));
       if (!id) throw typedError('INVALID_REQUEST', 'counter id is required', false);
       if (typeof PluginAPI.decrementCounter !== 'function') throw typedError('UNSUPPORTED_ACTION', 'PluginAPI.decrementCounter is not available in this Super Productivity runtime', false);
-      return { id, value: await PluginAPI.decrementCounter(id, Number((payload && payload.delta) || 1)) };
+      return { id, value: await PluginAPI.decrementCounter(id, Number(payload && payload.delta != null ? payload.delta : 1)) };
     },
     'counter.delete': async (payload) => {
       const id = (payload && (payload.id || payload.counterId || payload.counter_id));

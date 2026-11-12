@@ -1954,9 +1954,9 @@ async function attachGitea(payload = {}) {
     'counter.setDay': async () => { throw typedError('UNSUPPORTED_ACTION', 'Setting a habit\'s value for a day needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN). Nothing was changed.', false); },
     'bridge.health': async () => ({ ok: true, message: 'bridge alive', dirs }),
     'bridge.checkConnection': async () => ({ ok: true, message: 'bridge alive', dirs }),
-    'bridge.status': async () => ({ isReady: true, pluginVersion: '0.1.0', protocolVersion: PROTOCOL_VERSION }),
+    'bridge.status': async () => ({ isReady: true, pluginVersion: '0.2.0', protocolVersion: PROTOCOL_VERSION }),
     'bridge.debugDirectories': async () => ({ ok: true, dirs }),
-    'bridge.capabilities': async () => ({ supportedActions, pluginVersion: '0.1.0', protocolVersion: PROTOCOL_VERSION }),
+    'bridge.capabilities': async () => ({ supportedActions, pluginVersion: '0.2.0', protocolVersion: PROTOCOL_VERSION }),
     // Focus state comes from Local REST GET /focus, read by the MCP server.
     'focus.state': async () => { throw typedError('UNSUPPORTED_ACTION', 'Reading focus state needs Local REST (SP_LOCAL_REST_URL and SP_LOCAL_REST_TOKEN)', false); },
   };

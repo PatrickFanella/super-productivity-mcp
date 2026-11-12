@@ -3,7 +3,7 @@ package version
 import "github.com/PatrickFanella/super-productivity-mcp/internal/domain"
 
 var (
-	BinaryVersion = "0.1.0"
+	BinaryVersion = "0.2.0"
 	Commit        = "dev"
 	BuildDate     = "unknown"
 )

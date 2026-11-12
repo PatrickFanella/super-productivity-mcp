@@ -1,0 +1,68 @@
+name: Release
+
+# A tag like v0.2.0 runs the full test suite on the tagged commit, builds
+# sp-mcp and sp-quick-add for Linux and macOS plus the plugin zip, attaches
+# them to a GitHub release, and publishes the npm packages. "Run workflow"
+# with an existing tag retries a release; files and npm versions that are
+# already published are kept. See docs/releasing.md.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, such as v0.2.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check the tag matches the version
+        run: |
+          version=$(sed -n 's/.*BinaryVersion = "\([^"]*\)".*/\1/p' internal/version/version.go)
+          [ "v${version}" = "${TAG}" ] || { echo "internal/version/version.go says ${version}, but the tag is ${TAG}"; exit 1; }
+      - name: Full verification suite
+        run: make test
+      - name: Build the release files
+        run: scripts/dist.sh "${TAG#v}"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" --verify-tag --generate-notes --title "super-productivity-mcp ${TAG#v}"
+          fi
+          gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber dist/release/*
+      # Needs the NPM_TOKEN secret: a granular npm token that may publish to
+      # the @subcult scope and bypasses two-factor authentication.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::warning::NPM_TOKEN is not set; the npm packages were not published (docs/releasing.md)"
+            exit 0
+          fi
+          scripts/publish-npm.sh "${TAG#v}"

@@ -9,7 +9,7 @@ A [SUBCULT](https://subcult.tv) project.
 
 super-productivity-mcp lets AI clients such as Claude Desktop, Cursor, VS Code (Copilot) and OpenCode read and change your tasks in [Super Productivity](https://super-productivity.com/), a local task manager. Ask your assistant to create tasks, list projects, log time or clean up a schedule. A desktop quick-add command adds tasks without opening an AI client.
 
-Everything runs on your machine. Task data stays in your Super Productivity installation; nothing goes through a hosted service. The current release is v0.1.0.
+Everything runs on your machine. Task data stays in your Super Productivity installation; nothing goes through a hosted service. The current release is v0.2.0.
 
 ## What is in the suite
 

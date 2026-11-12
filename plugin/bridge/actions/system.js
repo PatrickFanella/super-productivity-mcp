@@ -119,13 +119,13 @@ const exported = {
   "bridge.checkConnection": async () => ({ ok: true, message: "bridge alive" }),
   "bridge.status": async () => ({
     isReady: true,
-    pluginVersion: "0.1.0",
+    pluginVersion: "0.2.0",
     protocolVersion: catalog.protocolVersion,
   }),
   "bridge.debugDirectories": async () => ({ ok: true, dirs: global.mcpBridgeDirs || {} }),
   "bridge.capabilities": async () => ({
     supportedActions: catalog.tools.map((t) => t.action),
-    pluginVersion: "0.1.0",
+    pluginVersion: "0.2.0",
     protocolVersion: catalog.protocolVersion,
   }),
   // Focus state is read by the MCP server from Local REST GET /focus; the

@@ -19,11 +19,9 @@ A release is a `v<version>` tag on `main`, pushed to GitHub. The version must ma
 
 To retry a release, run the workflow by hand with the tag.
 
-## Secrets
+## npm authentication
 
-| Secret | Holds |
-|---|---|
-| `NPM_TOKEN` (GitHub repository secret) | A granular npmjs.org token with read and write access to the `@subcult` packages and "Bypass two-factor authentication" enabled. Without it the npm step only warns. |
+The workflow publishes through npm trusted publishing, so no npm token is stored. Each of the five packages has a trusted publisher on npmjs.com (package Settings, Trusted publishing, GitHub Actions): organization `subculture-collective`, repository `super-productivity-mcp`, workflow `release.yml`, no environment, `npm publish` allowed. Every run first checks that npm trusts the workflow for all five. To check without releasing, run the workflow by hand with **check only** on; any existing tag will do.
 
 ## Homebrew
 

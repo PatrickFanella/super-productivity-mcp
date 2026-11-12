@@ -4,7 +4,9 @@ name: Release
 # sp-mcp and sp-quick-add for Linux and macOS plus the plugin zip, attaches
 # them to a GitHub release, and publishes the npm packages. "Run workflow"
 # with an existing tag retries a release; files and npm versions that are
-# already published are kept. See docs/releasing.md.
+# already published are kept. npm publishing uses trusted publishing (OIDC), so
+# no npm token is stored; every run first checks that npm trusts this workflow
+# for all five packages, and "check only" stops there. See docs/releasing.md.
 on:
   push:
     tags: ["v*"]
@@ -13,9 +15,15 @@ on:
       tag:
         description: Existing release tag, such as v0.2.0
         required: true
+      check:
+        description: Check only (npm trusts this workflow; nothing is built or published)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  # Trusted publishing: npm exchanges the job's OIDC token for a publish token.
+  id-token: write
 
 concurrency:
   group: release
@@ -29,24 +37,35 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
+      # A check-only run uses the dispatched branch, which has the check script.
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ env.TAG }}
+          ref: ${{ inputs.check && github.ref || format('refs/tags/{0}', env.TAG) }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # Trusted publishing needs npm 11.5.1 or later; Node 24 ships it.
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+      - name: Check npm trusts this workflow
+        run: >-
+          scripts/npm-oidc-check.sh @subcult/super-productivity-mcp
+          @subcult/super-productivity-mcp-linux-x64 @subcult/super-productivity-mcp-linux-arm64
+          @subcult/super-productivity-mcp-darwin-x64 @subcult/super-productivity-mcp-darwin-arm64
       - name: Check the tag matches the version
+        if: ${{ !inputs.check }}
         run: |
           version=$(sed -n 's/.*BinaryVersion = "\([^"]*\)".*/\1/p' internal/version/version.go)
           [ "v${version}" = "${TAG}" ] || { echo "internal/version/version.go says ${version}, but the tag is ${TAG}"; exit 1; }
       - name: Full verification suite
+        if: ${{ !inputs.check }}
         run: make test
       - name: Build the release files
+        if: ${{ !inputs.check }}
         run: scripts/dist.sh "${TAG#v}"
       - name: GitHub release
+        if: ${{ !inputs.check }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -55,14 +74,6 @@ jobs:
             gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" --verify-tag --generate-notes --title "super-productivity-mcp ${TAG#v}"
           fi
           gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber dist/release/*
-      # Needs the NPM_TOKEN secret: a granular npm token that may publish to
-      # the @subcult scope and bypasses two-factor authentication.
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "::warning::NPM_TOKEN is not set; the npm packages were not published (docs/releasing.md)"
-            exit 0
-          fi
-          scripts/publish-npm.sh "${TAG#v}"
+        if: ${{ !inputs.check }}
+        run: scripts/publish-npm.sh "${TAG#v}"
